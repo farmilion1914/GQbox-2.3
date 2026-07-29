@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GQbox — Управление отгрузками и заказами</title>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<div id="authBlock" style="display:none">
+    <div class="auth-container" id="authLogin">
+        <div style="font-size:48px;margin-bottom:16px">🔐</div>
+        <h2>Вход в систему</h2>
+        <p class="subtitle">Введите email и пароль</p>
+        <div class="field"><label>Email</label><input type="email" id="authEmail" placeholder="user@example.com" style="text-align:center"></div>
+        <div class="field"><label>Пароль</label><input type="password" id="authPassword" placeholder="••••••••" style="text-align:center"></div>
+        <div class="auth-error" id="authError"></div>
+        <button type="button" class="btn btn-primary" id="btnLogin" style="width:100%;justify-content:center">Войти</button>
+        <div class="auth-link">Нет аккаунта? <a id="showRegister">Создать</a></div>
+    </div>
+    <div class="auth-container" id="authRegister" style="display:none">
+        <div style="font-size:48px;margin-bottom:16px">📝</div>
+        <h2>Регистрация</h2>
+        <p class="subtitle">Создайте аккаунт для доступа</p>
+        <div class="field"><label>Email</label><input type="email" id="regEmail" placeholder="user@example.com" style="text-align:center"></div>
+        <div class="field"><label>Пароль (минимум 6 символов)</label><input type="password" id="regPassword" placeholder="••••••••" style="text-align:center"></div>
+        <div class="field"><label>Повторите пароль</label><input type="password" id="regPassword2" placeholder="••••••••" style="text-align:center"></div>
+        <div class="auth-error" id="regError"></div>
+        <button type="button" class="btn btn-primary" id="btnRegister" style="width:100%;justify-content:center">Зарегистрироваться</button>
+        <div class="auth-link">Уже есть аккаунт? <a id="showLogin">Войти</a></div>
+    </div>
+</div>
+
+<div id="mainApp" style="display:none">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-title">GQbox</div>
+        <div class="header-status" id="headerStatus">
+            <button type="button" class="theme-toggle" id="themeToggle" title="Сменить тему">🌓</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnLogout" style="margin-left:4px;color:var(--danger)">Выйти</button>
+        </div>
+    </div>
+
+    <!-- Навигация -->
+    <div class="nav">
+        <button type="button" class="nav-btn active" data-page="schedule">📊 Сводная</button>
+        <button type="button" class="nav-btn" data-page="wb">WB</button>
+        <button type="button" class="nav-btn" data-page="ozon">Ozon</button>
+        <button type="button" class="nav-btn" data-page="logistics">Логистика</button>
+        <button type="button" class="nav-btn" data-page="ved">ВЭД</button>
+        <button type="button" class="nav-btn" data-page="orders">📦 Заказы</button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- ============ СТРАНИЦА: Сводная ============ -->
+    <div class="page active" id="page-schedule">
+        <h1>Сводная</h1>
+        <p class="subtitle">Загруженность склада, упаковки, прогноз и общие остатки</p>
+        <div class="kpi-strip" id="kpiStrip"></div>
+        <div class="sub-nav">
+            <button type="button" class="sub-nav-btn active" data-sub-page="weeks">Загруженность по упаковке</button>
+            <button type="button" class="sub-nav-btn" data-sub-page="forecast">Загруженность склада</button>
+            <button type="button" class="sub-nav-btn" data-sub-page="stock">Остатки (МС)</button>
+        </div>
+        <div class="sub-page active" id="sub-page-weeks">
+            <div class="top-bar" style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+                <button type="button" class="btn btn-primary btn-sm" id="btnImportSchedule">Импорт отгрузок</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnExportSchedule">CSV</button>
+                <span style="font-size:12px;color:var(--text-secondary);margin-left:auto">Недель: <b id="scheduleWeekCount">0</b> · Строк: <b id="scheduleTotalRows">0</b></span>
+            </div>
+            <div class="import-area" id="scheduleImportBlock" style="display:none">
+                <textarea id="scheduleImportText" placeholder="Вставь строки (дата\tМП\tгород\tкол-во)"></textarea>
+                <button type="button" class="btn btn-primary btn-sm" style="margin-top:6px" id="btnDoScheduleImport">Загрузить</button>
+            </div>
+            <div class="table-wrap" id="scheduleTable"><div class="empty-state">Нет данных</div></div>
+        </div>
+        <div class="sub-page" id="sub-page-forecast">
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Ёмкость складов, м³</label><input type="number" id="totalCapacity" step="1" value="2267"></div>
+                    <div class="field"><label>Текущая занятость, м³</label><input type="number" id="currentOccupancy" step="1" value="1408"></div>
+                    <div class="field"><label>Постоянный объём, м³</label><input type="number" id="constantVolume" step="1" value="85"></div>
+                    <div class="field"><label>Расход марта (база), м³</label><input type="number" id="baseExpense" step="0.01" value="51.50"></div>
+                    <div class="field"><label>План марта, руб.</label><input type="number" id="marchPlan" step="1000000" value="311000000"></div>
+                </div>
+                <div style="margin-top:12px;display:flex;gap:8px">
+                    <button type="button" class="btn btn-primary btn-sm" id="btnSaveWarehouseSettings">Сохранить настройки</button>
+                    <button type="button" class="btn btn-outline btn-sm" id="btnImportExcelForSettings">Импорт из Excel-модели</button>
+                    <button type="button" class="btn btn-outline btn-sm" id="btnResetSalesPlan">Сбросить план</button>
+                </div>
+                <div class="settings-note">Изменение настроек или плана продаж автоматически пересчитывает прогноз</div>
+            </div>
+            <div class="section-title">План продаж и прогноз</div>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Месяц</th><th class="num">План продаж, руб.</th><th class="num">Рост</th><th class="num">Приход, м³</th><th class="num">Расход, м³</th><th class="num">Остаток, м³</th><th class="num">Свободно, м³</th><th>Загрузка</th></tr></thead>
+                    <tbody id="salesPlanEditor"></tbody>
+                </table>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div class="chart-title">График прихода и расхода</div>
+                    <div class="chart-legend"><span><span class="legend-dot incoming"></span> Приход (ВЭД)</span><span><span class="legend-dot expense"></span> Расход (прогноз)</span></div>
+                </div>
+                <svg class="chart-svg" id="forecastChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+        </div>
+        <div class="sub-page" id="sub-page-stock">
+            <div class="section-title">Общие остатки (МойСклад)</div>
+            <div class="stock-status-bar" id="msStockStatusBar">
+                <span class="status-dot old" id="msStatusDot"></span>
+                <span class="status-text" id="msStatusText">Нет данных</span>
+                <span class="status-sep"></span>
+                <button type="button" class="refresh-btn" id="btnRefreshMsStock">🔄 Обновить</button>
+                <button type="button" class="excel-btn" id="btnUploadMsExcel"><span class="excel-icon">📎</span> Загрузить Excel</button>
+                <span class="file-tag" id="msFileTag" style="display:none"><span id="msFileName"></span><button type="button" class="file-remove" id="msFileRemove">✕</button></span>
+                <input type="file" accept=".xlsx,.xls" id="msStockFileInput" style="display:none">
+            </div>
+            <div class="stock-stats-strip" id="msStockStats"></div>
+            <div class="analytics-grid" id="msStockComparisonGrid" style="display:none">
+                <div class="analytics-card wb-card" id="msWbComparisonCard"><div class="ac-label"><span class="ac-icon">W</span>WB</div><div class="ac-metrics"><div class="ac-metric"><div class="ac-metric-value" id="msWbMatchCount">0</div><div class="ac-metric-label">Позиций</div></div><div class="ac-metric"><div class="ac-metric-value" id="msWbMatchBalance">0</div><div class="ac-metric-label">Общий остаток</div></div></div></div>
+                <div class="analytics-card ozon-card" id="msOzonComparisonCard"><div class="ac-label"><span class="ac-icon">O</span>Ozon</div><div class="ac-metrics"><div class="ac-metric"><div class="ac-metric-value" id="msOzonMatchCount">0</div><div class="ac-metric-label">Позиций</div></div><div class="ac-metric"><div class="ac-metric-value" id="msOzonMatchBalance">0</div><div class="ac-metric-label">Общий остаток</div></div></div></div>
+                <div class="analytics-card total-card" id="msUnmatchedCard"><div class="ac-label">Нераспределенный товар</div><div class="ac-metrics"><div class="ac-metric" id="msMetricMatched"><div class="ac-metric-value" id="msFullyMatched">0</div><div class="ac-metric-label">Распределено</div></div><div class="ac-metric" id="msMetricPartial"><div class="ac-metric-value" id="msPartiallyMatched">0</div><div class="ac-metric-label">Частично</div></div><div class="ac-metric" id="msMetricUnmatched"><div class="ac-metric-value" id="msUnmatchedCount">0</div><div class="ac-metric-label">Нераспред.</div></div></div></div>
+            </div>
+            <div class="stock-filters" id="msStockFilters" style="display:none">
+                <input type="text" id="msStockSearch" placeholder="🔍 Поиск..." style="flex:1;min-width:200px">
+                <select id="msStockBalanceFilter"><option value="all">Все остатки</option><option value="positive">Остаток > 0</option><option value="zero">Остаток = 0</option><option value="negative">Остаток < 0</option></select>
+                <select id="msStockWaitingFilter"><option value="all">Всё ожидание</option><option value="positive">Ожидание > 0</option><option value="zero">Ожидание = 0</option></select>
+                <select id="msStockMatchFilter"><option value="all">Все позиции</option><option value="matched">Распределено</option><option value="partial">Частично</option><option value="unmatched">Нераспред.</option></select>
+                <button type="button" class="btn btn-outline btn-sm" id="btnExportMsStock">Экспорт CSV</button>
+                <button type="button" class="chip" id="btnResetMsStockFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="msStockTable"><div class="empty-state">Загрузка данных...</div></div>
+        </div>
+    </div>
+
+    <!-- ============ СТРАНИЦА: WB ============ -->
+    <div class="page" id="page-wb">
+        <h1>Wildberries</h1><p class="subtitle">Карточки отгрузок</p>
+        <div class="sub-nav"><button type="button" class="sub-nav-btn active" data-wb-sub="shipments">Отгрузки</button><button type="button" class="sub-nav-btn" data-wb-sub="stock">Остатки</button></div>
+        <div class="sub-page active" id="wb-sub-shipments">
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Дата</label><input type="date" id="shipDateWildberries"></div>
+                    <div class="field"><label>Город</label><input type="text" id="shipCityWildberries" placeholder="Начните вводить" list="cityList"></div>
+                    <div class="field"><label>Кол-во</label><input type="number" id="shipQtyWildberries" min="1" placeholder="0"></div>
+                    <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment wb" id="btnSaveWb">Добавить</button></div>
+                </div>
+                <div class="route-info" id="routeInfoWildberries"><div class="route-title" id="routeTitleWildberries"></div><div class="route-detail" id="routeDetailWildberries" style="font-size:11px"></div><div class="route-schedule" id="routeScheduleWildberries" style="margin-top:4px"></div></div>
+            </div>
+            <div class="view-mode-toggle" id="wbViewToggle"><button type="button" class="view-mode-btn active" data-wb-view="week">Неделя</button><button type="button" class="view-mode-btn" data-wb-view="month">Месяц</button></div>
+            <div class="week-view" id="wbWeekView"></div>
+            <div class="cards-grid" id="wbCards" style="display:none"><div class="empty-state">Нет отгрузок</div></div>
+        </div>
+        <div class="sub-page" id="wb-sub-stock">
+            <div class="section-title">Остатки WB</div>
+            <div class="stock-status-bar" id="wbStockStatusBar">
+                <span class="status-dot old" id="wbStatusDot"></span>
+                <span class="status-text" id="wbStatusText">Нет данных</span>
+                <span class="status-sep"></span>
+                <button type="button" class="refresh-btn" id="btnRefreshWbStock">🔄 Обновить</button>
+                <button type="button" class="excel-btn" id="btnUploadWbExcel"><span class="excel-icon">📎</span> Загрузить Excel</button>
+                <span class="file-tag" id="wbFileTag" style="display:none"><span id="wbFileName"></span><button type="button" class="file-remove" id="wbFileRemove">✕</button></span>
+                <input type="file" accept=".xlsx,.xls" id="wbStockFileInputNew" style="display:none">
+            </div>
+            <div class="stock-stats-strip" id="wbStockStats"></div>
+            <div class="stock-filters" id="wbStockFilters" style="display:none">
+                <input type="text" id="wbStockSearch" placeholder="🔍 Поиск..." style="flex:1;min-width:200px">
+                <select id="wbStockBalanceFilter"><option value="all">Все</option><option value="positive">>0</option><option value="zero">=0</option><option value="negative"><0</option></select>
+                <select id="wbStockWaitingFilter"><option value="all">Всё ожидание</option><option value="positive">>0</option><option value="zero">=0</option></select>
+                <button type="button" class="btn btn-outline btn-sm" id="btnExportWbStock">CSV</button>
+                <button type="button" class="chip" id="btnResetWbStockFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="wbStockTable"><div class="empty-state">Загрузка данных...</div></div>
+        </div>
+    </div>
+
+    <!-- ============ СТРАНИЦА: Ozon ============ -->
+    <div class="page" id="page-ozon">
+        <h1>Ozon</h1><p class="subtitle">Карточки отгрузок</p>
+        <div class="sub-nav"><button type="button" class="sub-nav-btn active" data-ozon-sub="shipments">Отгрузки</button><button type="button" class="sub-nav-btn" data-ozon-sub="stock">Остатки</button></div>
+        <div class="sub-page active" id="ozon-sub-shipments">
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Дата</label><input type="date" id="shipDateOzon"></div>
+                    <div class="field"><label>Город</label><input type="text" id="shipCityOzon" placeholder="Начните вводить" list="cityList"></div>
+                    <div class="field"><label>Кол-во</label><input type="number" id="shipQtyOzon" min="1" placeholder="0"></div>
+                    <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment ozon" id="btnSaveOzon">Добавить</button></div>
+                </div>
+            </div>
+            <div class="view-mode-toggle" id="ozonViewToggle"><button type="button" class="view-mode-btn active" data-ozon-view="week">Неделя</button><button type="button" class="view-mode-btn" data-ozon-view="month">Месяц</button></div>
+            <div class="week-view" id="ozonWeekView"></div>
+            <div class="cards-grid" id="ozonCards" style="display:none"><div class="empty-state">Нет отгрузок</div></div>
+        </div>
+        <div class="sub-page" id="ozon-sub-stock">
+            <div class="section-title">Остатки Ozon</div>
+            <div class="stock-status-bar" id="ozonStockStatusBar">
+                <span class="status-dot old" id="ozonStatusDot"></span>
+                <span class="status-text" id="ozonStatusText">Нет данных</span>
+                <span class="status-sep"></span>
+                <button type="button" class="refresh-btn" id="btnRefreshOzonStock">🔄 Обновить</button>
+                <button type="button" class="excel-btn" id="btnUploadOzonExcel"><span class="excel-icon">📎</span> Загрузить Excel</button>
+                <span class="file-tag" id="ozonFileTag" style="display:none"><span id="ozonFileName"></span><button type="button" class="file-remove" id="ozonFileRemove">✕</button></span>
+                <input type="file" accept=".xlsx,.xls" id="ozonStockFileInputNew" style="display:none">
+            </div>
+            <div class="stock-stats-strip" id="ozonStockStats"></div>
+            <div class="stock-filters" id="ozonStockFilters" style="display:none">
+                <input type="text" id="ozonStockSearch" placeholder="🔍 Поиск..." style="flex:1;min-width:200px">
+                <select id="ozonStockBalanceFilter"><option value="all">Все</option><option value="positive">>0</option><option value="zero">=0</option><option value="negative"><0</option></select>
+                <select id="ozonStockWaitingFilter"><option value="all">Всё ожидание</option><option value="positive">>0</option><option value="zero">=0</option></select>
+                <button type="button" class="btn btn-outline btn-sm" id="btnExportOzonStock">CSV</button>
+                <button type="button" class="chip" id="btnResetOzonStockFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="ozonStockTable"><div class="empty-state">Загрузка данных...</div></div>
+        </div>
+    </div>
+
+    <!-- ============ СТРАНИЦА: Логистика ============ -->
+    <div class="page" id="page-logistics">
+        <h1>Логистика</h1>
+        <div class="sub-nav" id="logistics-sub-nav">
+            <button type="button" class="sub-nav-btn active" data-log-sub="shipments">Отгрузки</button>
+            <button type="button" class="sub-nav-btn" data-log-sub="expenses">Расходы склада</button>
+            <button type="button" class="sub-nav-btn" data-log-sub="transfers">Перемещения</button>
+        </div>
+
+        <!-- Подстраница: Отгрузки -->
+        <div class="sub-page active" id="log-sub-shipments">
+            <div id="logAnalyticsCard"></div>
+            <div class="top-bar" style="display:flex;gap:8px;margin-bottom:16px"><button type="button" class="btn btn-outline btn-sm" id="btnToggleLogImport">Импорт</button><button type="button" class="btn btn-outline btn-sm" id="btnExportLog">CSV</button><span style="font-size:12px;color:var(--text-secondary);margin-left:auto">Строк: <b id="logCount">0</b></span></div>
+            <div class="import-area" id="logImportBlock" style="display:none"><textarea id="logImportText" placeholder="Вставь строки"></textarea><button type="button" class="btn btn-primary btn-sm" style="margin-top:6px" id="btnDoLogImport">Загрузить</button></div>
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Дата</label><input type="date" id="logDate"></div>
+                    <div class="field"><label>МП</label><select id="logMP"><option>Wildberries</option><option>Ozon</option></select></div>
+                    <div class="field"><label>Тип</label><select id="logType"><option>FBO</option><option>FBS</option></select></div>
+                    <div class="field"><label>Поставщик</label><select id="logSupplier"><option value="">—</option><option>Большие Амбиции</option><option>ИП Орищенко</option><option>НордТрансСклад</option><option>Тессар</option></select></div>
+                    <div class="field"><label>Город</label><input type="text" id="logCity" placeholder="Город" list="cityList"></div>
+                </div>
+                <div class="form-row" style="margin-top:10px">
+                    <div class="field"><label>Кол-во</label><input type="number" id="logQty" min="1"></div>
+                    <div class="field"><label>Паллет</label><input type="number" id="logBoxes" min="1"></div>
+                    <div class="field"><label>Сумма</label><input type="number" id="logAmount" step="0.01"></div>
+                    <div class="field"><label>НДС</label><select id="logNDS"><option value="22%">22%</option><option value="7%">7%</option></select></div>
+                    <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment log" id="btnAddLog">+ Добавить</button></div>
+                </div>
+            </div>
+            <div class="filters"><input type="month" id="logFilterMonth"><select id="logFilterStatus"><option value="all">Все</option><option value="paid">Оплачен</option><option value="unpaid">Не оплачен</option></select><select id="logFilterMP"><option value="all">Все МП</option><option>Wildberries</option><option>Ozon</option></select><button type="button" class="chip" id="btnResetLogFilters">Сброс</button></div>
+            <div class="table-wrap" id="logTable"><div class="empty-state">Нет записей</div></div>
+        </div>
+
+        <!-- Подстраница: Расходы склада -->
+        <div class="sub-page" id="log-sub-expenses">
+            <div id="expensesAnalyticsCard"></div>
+            <div class="kpi-strip" id="expensesKpiStrip"></div>
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Дата</label><input type="date" id="expDate"></div>
+                    <div class="field"><label>Поставщик</label><input type="text" id="expSupplier" placeholder="Введите поставщика" list="expSupplierList"></div>
+                    <datalist id="expSupplierList">
+                        <option value="Озон">
+                        <option value="Wildberries">
+                        <option value="Деловые Линии">
+                        <option value="ПЭК">
+                        <option value="Байкал-Сервис">
+                        <option value="СДЭК">
+                        <option value="Почта России">
+                        <option value="Другой">
+                    </datalist>
+                    <div class="field"><label>Категория</label><select id="expCategory"><option value="">— Выберите —</option><option>Упаковщицы</option><option>Грузчики</option><option>Стрейч</option><option>Упаковка</option><option>Стреп-лента</option><option>Скотч</option><option>Коробки</option><option>Паллеты</option><option>Маркировка</option><option>Хозтовары</option><option>Канцелярия</option><option>Оборудование</option><option>Ремонт</option><option>Другое</option></select></div>
+                    <div class="field"><label>Описание</label><input type="text" id="expDescription" placeholder="Что заказали"></div>
+                </div>
+                <div class="form-row" style="margin-top:10px">
+                    <div class="field"><label>Сумма</label><input type="number" id="expAmount" step="0.01" placeholder="0.00"></div>
+                    <div class="field"><label>НДС</label><select id="expNds"><option value="22%">22%</option><option value="7%">7%</option><option value="0%">Без НДС</option></select></div>
+                    <div class="field"><label>Склад</label><select id="expWarehouse"><option value="Москва">Москва</option><option value="Пушкино">Пушкино</option></select></div>
+                    <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment log" id="btnAddExpense">+ Добавить расход</button></div>
+                </div>
+            </div>
+            <div class="filters">
+                <input type="month" id="expFilterMonth">
+                <select id="expFilterSupplier"><option value="all">Все поставщики</option></select>
+                <select id="expFilterCategory"><option value="all">Все категории</option></select>
+                <button type="button" class="chip" id="btnResetExpFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="expensesTable"><div class="empty-state">Нет расходов</div></div>
+        </div>
+
+        <!-- Подстраница: Перемещения между складами -->
+        <div class="sub-page" id="log-sub-transfers">
+            <div id="transfersAnalyticsCard"></div>
+            <div class="kpi-strip" id="transfersKpiStrip"></div>
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Дата</label><input type="date" id="trDate"></div>
+                    <div class="field"><label>Откуда</label><select id="trFrom"><option value="Москва">Москва</option><option value="Пушкино">Пушкино</option></select></div>
+                    <div class="field"><label>Куда</label><select id="trTo"><option value="Пушкино">Пушкино</option><option value="Москва">Москва</option></select></div>
+                    <div class="field"><label>Кол-во (паллет)</label><input type="number" id="trQty" min="1" placeholder="0"></div>
+                </div>
+                <div class="form-row" style="margin-top:10px">
+                    <div class="field"><label>Стоимость перевозки</label><input type="number" id="trCost" step="0.01" placeholder="0.00"></div>
+                    <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment log" id="btnAddTransfer">+ Добавить перемещение</button></div>
+                </div>
+            </div>
+            <div class="filters">
+                <input type="month" id="trFilterMonth">
+                <select id="trFilterDirection"><option value="all">Все направления</option><option value="Москва→Пушкино">Москва → Пушкино</option><option value="Пушкино→Москва">Пушкино → Москва</option></select>
+                <button type="button" class="chip" id="btnResetTrFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="transfersTable"><div class="empty-state">Нет перемещений</div></div>
+        </div>
+    </div>
+
+    <!-- ============ СТРАНИЦА: ВЭД ============ -->
+    <div class="page" id="page-ved">
+        <h1>ВЭД — Поставки из Китая</h1>
+        <div class="kpi-strip" id="vedKpiStrip"></div>
+        <div class="form-card">
+            <div class="form-row">
+                <div class="field"><label>Номер поставки</label><input type="text" id="vedNumber" placeholder="W-1603-3003"></div>
+                <div class="field"><label>Ожидаемая дата прибытия</label><input type="date" id="vedEta"></div>
+                <div class="field"><label>Поставщик</label><select id="vedSupplier"><option value="">— Выберите —</option><option value="Анжела">Анжела</option><option value="Венди">Венди</option><option value="Анжела/Венди">Анжела/Венди</option><option value="Партнеры">Партнеры</option></select></div>
+                <div class="field"><label>Склад выгрузки</label><select id="vedWarehouse"><option value="Москва">Москва</option><option value="Пушкино">Пушкино</option></select></div>
+                <div class="field"><label>Статус</label><select id="vedStatus"><option value="transit">В пути</option><option value="customs">Таможня</option><option value="svh">На СВХ</option><option value="arrived">Прибыла</option></select></div>
+                <div class="field"><label>Вкл. в модель</label><select id="vedIncludeInModel"><option value="yes">Да</option><option value="no">Нет</option></select></div>
+            </div>
+            <div style="margin-top:14px;border-top:1px solid var(--separator);padding-top:14px">
+                <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:8px">Товарные списки (до 4)</div>
+                <div class="ved-lists-container" id="vedListsContainer"></div>
+                <div class="parser-summary" id="vedTotalSummary" style="display:none"></div>
+            </div>
+            <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+                <button type="button" class="btn-full ved-add-list" id="btnAddVedList">+ Добавить список</button>
+                <button type="button" class="btn-full ved-save" id="btnSaveVed">Сохранить поставку</button>
+            </div>
+        </div>
+        <div class="ved-search"><input type="text" id="vedArticleSearch" placeholder="Поиск по артикулу..."><div class="ved-search-results" id="vedSearchResults"></div></div>
+        <div class="cards-grid" id="vedCards"><div class="empty-state">Нет поставок</div></div>
+    </div>
+
+    <!-- ============ СТРАНИЦА: Заказы (Order Calculator) ============ -->
+    <div class="page" id="page-orders">
+        <h1>📦 Расчёт потребности в заказе</h1>
+        <p class="subtitle">Автоматический расчёт заказа на основе остатков и скорости продаж из Firebase</p>
+
+        <div class="controls" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary" id="btnCalculateOrders">🔄 Рассчитать заказ</button>
+            <button type="button" class="btn btn-outline btn-sm" id="btnExportOrders">📊 Экспорт CSV</button>
+            <span style="font-size:12px;color:var(--text-secondary);" id="ordersLastUpdate">Последнее обновление: —</span>
+        </div>
+
+        <!-- Сводка по заказу -->
+        <div id="ordersSummary" style="display:none;">
+            <div class="analytics-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+                <div class="analytics-card total-card">
+                    <div class="ac-label"><span class="ac-icon">📦</span>Всего к заказу</div>
+                    <div style="font-size:32px;font-weight:700;" id="totalOrderQuantity">0</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                </div>
+                <div class="analytics-card" style="border-left:4px solid #e53e3e;">
+                    <div class="ac-label"><span class="ac-icon" style="background:#e53e3e;">!</span>Срочно</div>
+                    <div style="font-size:28px;font-weight:700;color:#e53e3e;" id="ordersUrgentQuantity">0</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                </div>
+                <div class="analytics-card" style="border-left:4px solid #d69e2e;">
+                    <div class="ac-label"><span class="ac-icon" style="background:#d69e2e;">⚠</span>Обычный</div>
+                    <div style="font-size:28px;font-weight:700;color:#d69e2e;" id="ordersNormalQuantity">0</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                </div>
+                <div class="analytics-card" style="border-left:4px solid #38a169;">
+                    <div class="ac-label"><span class="ac-icon" style="background:#38a169;">✓</span>Плановый</div>
+                    <div style="font-size:28px;font-weight:700;color:#38a169;" id="ordersPlannedQuantity">0</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                </div>
+                <div class="analytics-card" style="border-left:4px solid #667eea;">
+                    <div class="ac-label"><span class="ac-icon" style="background:#667eea;">💰</span>Общая стоимость</div>
+                    <div style="font-size:28px;font-weight:700;color:#667eea;" id="totalOrderCost">0</div>
+                    <div style="font-size:11px;color:var(--text-tertiary);">руб.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Таблица с расчётом -->
+        <div id="ordersTableContainer" style="display:none;">
+            <div class="table-controls" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border-radius:12px 12px 0 0;flex-wrap:wrap;gap:8px;">
+                <div style="display:flex;gap:16px;font-size:13px;">
+                    <span>Всего: <strong id="ordersTotalProducts">0</strong></span>
+                    <span>К заказу: <strong id="ordersProductsToOrder">0</strong></span>
+                </div>
+                <div class="filters" style="display:flex;gap:6px;">
+                    <button type="button" class="filter-btn active" data-order-filter="all">Все</button>
+                    <button type="button" class="filter-btn" data-order-filter="urgent">🟥 Срочные</button>
+                    <button type="button" class="filter-btn" data-order-filter="normal">🟨 Обычные</button>
+                    <button type="button" class="filter-btn" data-order-filter="planned">🟩 Плановые</button>
+                </div>
+            </div>
+            <div class="table-wrap" id="ordersTable" style="border-radius:0 0 12px 12px;">
+                <div class="empty-state">Нажмите «Рассчитать заказ»</div>
+            </div>
+        </div>
+
+        <!-- Настройки расчёта -->
+        <div class="form-card" style="margin-top:20px;">
+            <div style="font-size:14px;font-weight:600;margin-bottom:12px;">⚙️ Настройки расчёта</div>
+            <div class="form-row">
+                <div class="field"><label>Горизонт срочных (дней)</label><input type="number" id="urgentHorizon" value="20" min="1"></div>
+                <div class="field"><label>Горизонт обычных (дней)</label><input type="number" id="normalHorizon" value="30" min="1"></div>
+                <div class="field"><label>Горизонт плановых (дней)</label><input type="number" id="plannedHorizon" value="45" min="1"></div>
+                <div class="field"><label>Порог срочности (дней)</label><input type="number" id="urgentThreshold" value="7" min="1"></div>
+                <div class="field"><label>Порог обычных (дней)</label><input type="number" id="normalThreshold" value="15" min="1"></div>
+                <div class="field"><label>Минимальный заказ (шт)</label><input type="number" id="minOrderQty" value="10" min="1"></div>
+            </div>
+            <div style="margin-top:12px;">
+                <button type="button" class="btn btn-primary btn-sm" id="btnSaveOrderSettings">💾 Сохранить настройки</button>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="cityList"></datalist>
+</div>
+
+<script src="./js/app.js"></script>
+</body>
+</html>
