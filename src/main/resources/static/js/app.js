@@ -38,6 +38,18 @@ var vedTempLists = [null], vedSearchQuery = '', vedExpandedId = null;
 var orderFilter = 'all';
 var lastOrderResult = null;
 
+// ============ OZON API (несколько ИП, прямо из браузера) ============
+var OZON_ACCOUNTS = [
+    { clientId: '28560', apiKey: '57fd9f69-1931-4633-8186-dec9496a2d09', label: 'ИП КЮА' },
+    { clientId: '753500', apiKey: '51e6f7da-1a9f-4109-8756-cc6322768ba4', label: 'ИП КАА' },
+    { clientId: '559028', apiKey: '4b64bc96-65e0-4b64-878a-5440b6771759', label: 'ИП БМС' }
+];
+var OZON_API_BASE = 'https://api-seller.ozon.ru';
+var ozonApiInProgress = false;
+var ozonApiLastUpdate = null;
+var ozonApiLastError = null;
+var ozonApiProductsCache = null; // { articles: {}, skus: {} }
+
 var routesDB = {
     'Казань': { schedule: 'В любой день', delivery: '1-2 дня' },
     'Краснодар': { schedule: 'Пн-Ср, Ср-Пт, Пт-Вс', delivery: '2-3 дня' },
@@ -1575,6 +1587,154 @@ var OrderCalculator = {
     }
 };
 
+// ============ OZON API (прямо из браузера) ============
+async function ozonApiRequest(account, path, body) {
+    var url = OZON_API_BASE + path;
+    var response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Client-Id': account.clientId,
+            'Api-Key': account.apiKey
+        },
+        body: JSON.stringify(body || {})
+    });
+    if (!response.ok) throw new Error('Ozon ' + path + ': ' + response.status);
+    return response.json();
+}
+
+async function ozonFetchStocks(articles) {
+    var result = {}; // article -> { present, name }
+    if (!articles || !articles.length) return result;
+    var uniqueArticles = Array.from(new Set(articles.filter(function(a) { return a && typeof a === 'string'; })));
+    if (!uniqueArticles.length) return result;
+    if (!ozonApiProductsCache) ozonApiProductsCache = { articles: {}, skus: {} };
+    for (var i = 0; i < OZON_ACCOUNTS.length; i++) {
+        var account = OZON_ACCOUNTS[i];
+        try {
+            // 1. Получить все товары аккаунта (с пагинацией через last_id)
+            var allOfferIds = [];
+            var lastId = null;
+            for (var page = 0; page < 10; page++) {
+                var listBody = { filter: { visibility: 'ALL' }, limit: 1000 };
+                if (lastId) listBody.last_id = lastId;
+                var listResp = await ozonApiRequest(account, '/v3/product/list', listBody);
+                var items = (listResp && listResp.result && listResp.result.items) || [];
+                if (!items.length) break;
+                items.forEach(function(it) { if (it.offer_id) allOfferIds.push(it.offer_id); });
+                lastId = listResp.result.last_id;
+                if (!lastId) break;
+            }
+            if (!allOfferIds.length) continue;
+            // 2. Получить остатки, наименования и SKU через /v3/product/info/list
+            var batchSize = 100;
+            for (var b = 0; b < allOfferIds.length; b += batchSize) {
+                var batch = allOfferIds.slice(b, b + batchSize);
+                var infoResp = await ozonApiRequest(account, '/v3/product/info/list', { offer_id: batch, limit: 100 });
+                var infoRows = (infoResp && infoResp.items) || [];
+                infoRows.forEach(function(it) {
+                    var offerId = it && it.offer_id;
+                    if (!offerId) return;
+                    // Кэшируем маппинг offer_id <-> sku
+                    if (it.sku) {
+                        ozonApiProductsCache.articles[offerId] = it.sku;
+                        ozonApiProductsCache.skus[it.sku] = offerId;
+                    }
+                    var present = 0;
+                    if (it.stocks && it.stocks.stocks && Array.isArray(it.stocks.stocks)) {
+                        it.stocks.stocks.forEach(function(s) {
+                            if (s && s.source === 'fbo') present += (s.present || 0);
+                        });
+                    }
+                    if (!result[offerId]) result[offerId] = { present: 0, name: it.name || offerId };
+                    result[offerId].present += present;
+                    if (it.name) result[offerId].name = it.name;
+                });
+            }
+        } catch (e) {
+            ozonApiLastError = 'Ozon («' + account.label + '») — остатки: ' + e.message;
+        }
+    }
+    return result;
+}
+
+async function ozonFetchSales(articles, days) {
+    var result = {}; // offer_id -> { ordered_units }
+    if (!articles || !articles.length) return result;
+    var uniqueArticles = Array.from(new Set(articles.filter(function(a) { return a && typeof a === 'string'; })));
+    if (!uniqueArticles.length) return result;
+    days = days || 30;
+    var dateFrom = new Date();
+    dateFrom.setDate(dateFrom.getDate() - days);
+    var fmt = function(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    var body = { date_from: fmt(dateFrom), date_to: fmt(new Date()), metrics: ['ordered_units'], dimension: ['sku'], filters: [], sort: [{ key: 'sku', order: 'ASC' }], limit: 1000, offset: 0 };
+    for (var i = 0; i < OZON_ACCOUNTS.length; i++) {
+        var account = OZON_ACCOUNTS[i];
+        try {
+            var resp = await ozonApiRequest(account, '/v1/analytics/data', body);
+            var rows = (resp && resp.result && resp.result.data) || [];
+            rows.forEach(function(row) {
+                var dims = row && row.dimensions;
+                var sku = dims && dims[0] && dims[0].id;
+                if (!sku) return;
+                // Маппинг SKU -> offer_id из кэша
+                var offerId = ozonApiProductsCache && ozonApiProductsCache.skus ? ozonApiProductsCache.skus[sku] : null;
+                if (!offerId || uniqueArticles.indexOf(offerId) === -1) return;
+                var units = 0;
+                if (row.metrics && Array.isArray(row.metrics)) {
+                    row.metrics.forEach(function(m) { if (typeof m === 'number') units += m; });
+                }
+                if (!result[offerId]) result[offerId] = { ordered_units: 0 };
+                result[offerId].ordered_units += units;
+            });
+        } catch (e) {
+            ozonApiLastError = 'Ozon («' + account.label + '») — продажи: ' + e.message;
+        }
+    }
+    return result;
+}
+
+async function applyOzonApiToProducts(products) {
+    if (!OZON_ACCOUNTS.length) return products;
+    ozonApiInProgress = true;
+    ozonApiLastError = null;
+    try {
+        var articles = products.map(function(p) { return p.article; });
+        var stocksPromise = ozonFetchStocks(articles);
+        var salesPromise = ozonFetchSales(articles, 30);
+        var stocks = await stocksPromise;
+        var sales = await salesPromise;
+        var updated = 0;
+        products.forEach(function(p) {
+            var stock = stocks[p.article];
+            if (stock) {
+                if (stock.present > 0) p.ozonStock = (p.ozonStock || 0) + stock.present;
+                if (stock.name && stock.name !== p.article) p.name = stock.name;
+                updated++;
+            }
+            var sale = sales[p.article];
+            if (sale && sale.ordered_units > 0) {
+                p.salesLast30Days = (p.salesLast30Days || 0) + sale.ordered_units;
+                updated++;
+            }
+        });
+        ozonApiLastUpdate = new Date().toISOString();
+        return { products: products, updated: updated };
+    } finally {
+        ozonApiInProgress = false;
+    }
+}
+
+function renderOzonApiStatus() {
+    var el = document.getElementById('ozonApiStatus');
+    if (!el) return;
+    var parts = [];
+    if (ozonApiInProgress) parts.push('<span style="color:var(--warning)">⏳ Синхронизация Ozon API...</span>');
+    if (ozonApiLastUpdate) parts.push('<span style="color:var(--success)">✅ Ozon API: обновлено ' + new Date(ozonApiLastUpdate).toLocaleTimeString('ru-RU') + '</span>');
+    if (ozonApiLastError) parts.push('<span style="color:var(--danger)">⚠ ' + escapeHtml(ozonApiLastError) + '</span>');
+    el.innerHTML = parts.join(' · ') || 'Ozon API не настроен';
+}
+
 function getProductsForOrderCalculation() {
     var products = [];
     var articles = new Set();
@@ -1614,11 +1774,17 @@ function renderOrderTable(result) {
     var priorityOrder = { urgent: 0, normal: 1, planned: 2 };
     products.sort(function(a, b) { var pDiff = (priorityOrder[a.priority] || 99) - (priorityOrder[b.priority] || 99); if (pDiff !== 0) return pDiff; return (b.recommendedOrder || 0) - (a.recommendedOrder || 0); });
     if (!products.length) { container.innerHTML = '<div class="empty-state">Нет товаров для отображения</div>'; return; }
-    var priorityLabels = { urgent: '<span class="priority-badge priority-urgent">🟥 Срочный</span>', normal: '<span class="priority-badge priority-normal">🟨 Обычный</span>', planned: '<span class="priority-badge priority-planned">🟩 Плановый</span>' };
-    var html = '<table><thead><tr><th>Артикул</th><th>Наименование</th><th>Продажи/день</th><th>Дней запаса</th><th>Приоритет</th><th class="num">К заказу</th><th class="num">Стоимость</th></tr></thead><tbody>';
+    var priorityLabels = { urgent: '<span class="priority-badge priority-urgent">Срочный</span>', normal: '<span class="priority-badge priority-normal">Обычный</span>', planned: '<span class="priority-badge priority-planned">Плановый</span>' };
+    var html = '<table><thead><tr><th>Артикул</th><th>Наименование</th><th class="num">Продажи 30 дн.</th><th class="num">Скорость/день</th><th class="num">Остаток МС</th><th class="num">Остаток Ozon</th><th class="num">Остаток WB</th><th class="num">Всего остаток</th><th class="num">Дней запаса</th><th>Приоритет</th><th class="num">К заказу</th><th class="num">Стоимость</th></tr></thead><tbody>';
     products.forEach(function(p) {
         var order = p.recommendedOrder || 0;
-        html += '<tr><td><code>' + escapeHtml(p.article || '—') + '</code></td><td>' + escapeHtml(p.name || '—') + '</td><td>' + (p.dailySales || 0).toFixed(2) + '</td><td>' + (p.daysOfStock === 999 ? '—' : (p.daysOfStock || 0).toFixed(1) + ' дн.') + '</td><td>' + (priorityLabels[p.priority] || '—') + '</td><td class="num" style="font-weight:700;color:' + (order > 0 ? 'var(--danger)' : 'var(--text-tertiary)') + '">' + order + '</td><td class="num">' + formatCurrency(p.orderCost || 0) + '</td></tr>';
+        var ms = p.ourWarehouse || 0;
+        var oz = p.ozonStock || 0;
+        var wb = p.wbStock || 0;
+        var total = ms + oz + wb;
+        var days = p.daysOfStock === 999 ? '—' : (p.daysOfStock || 0).toFixed(1) + ' дн.';
+        var daysClass = p.daysOfStock !== 999 && p.daysOfStock < 15 ? 'style="color:var(--danger);font-weight:700"' : '';
+        html += '<tr><td><code>' + escapeHtml(p.article || '—') + '</code></td><td>' + escapeHtml(p.name || '—') + '</td><td class="num">' + (p.salesLast30Days || 0).toLocaleString('ru-RU') + '</td><td class="num">' + (p.dailySales || 0).toFixed(2) + '</td><td class="num">' + ms.toLocaleString('ru-RU') + '</td><td class="num">' + oz.toLocaleString('ru-RU') + '</td><td class="num">' + wb.toLocaleString('ru-RU') + '</td><td class="num" style="font-weight:700">' + total.toLocaleString('ru-RU') + '</td><td class="num" ' + daysClass + '>' + days + '</td><td>' + (priorityLabels[p.priority] || '—') + '</td><td class="num" style="font-weight:700;color:' + (order > 0 ? 'var(--danger)' : 'var(--text-tertiary)') + '">' + order + '</td><td class="num">' + formatCurrency(p.orderCost || 0) + '</td></tr>';
     });
     html += '</tbody></table>';
     container.innerHTML = html;
@@ -1632,36 +1798,38 @@ async function calculateOrders() {
         showToast('⏳ Выполняется расчёт...');
         var products = getProductsForOrderCalculation();
         if (!products.length) { showToast('❌ Нет данных для расчёта. Загрузите остатки.'); return; }
-        try {
-            var response = await fetch('/api/order/calculate?filter=' + orderFilter);
-            if (response.ok) {
-                var result = await response.json();
-                lastOrderResult = { products: result.products || [], summary: result.summary || result };
-                renderOrderSummary(lastOrderResult.summary);
-                renderOrderTable(lastOrderResult);
-                document.getElementById('ordersLastUpdate').textContent = 'Последнее обновление: ' + new Date().toLocaleString() + ' (бэкенд)';
-                showToast('✅ Расчёт выполнен (бэкенд)');
-                return;
-            }
-        } catch(e) {}
+        // Получаем реальные остатки и продажи Ozon (3 ИП) прямо из браузера
+        var apiResult = await applyOzonApiToProducts(products);
+        products = apiResult.products;
         var result = OrderCalculator.calculateAll(products);
         lastOrderResult = result;
         renderOrderSummary(result.summary);
         renderOrderTable(result);
-        document.getElementById('ordersLastUpdate').textContent = 'Последнее обновление: ' + new Date().toLocaleString() + ' (локально)';
+        renderOzonApiStatus();
+        var apiInfo = apiResult.updated > 0 ? ' · Ozon API: ' + apiResult.updated + ' обновл.' : '';
+        document.getElementById('ordersLastUpdate').textContent = 'Последнее обновление: ' + new Date().toLocaleString() + apiInfo;
         showToast('✅ Расчёт выполнен: ' + result.summary.productsToOrder + ' товаров к заказу');
     } catch (error) { showToast('❌ Ошибка: ' + error.message); }
 }
 
 function exportOrdersCSV() {
     if (!lastOrderResult) { showToast('Сначала выполните расчёт'); return; }
-    var csv = 'Артикул;Наименование;Приоритет;Продажи/день;Дней запаса;К заказу;Стоимость\n';
-    lastOrderResult.products.forEach(function(p) { if ((p.recommendedOrder || 0) > 0) { csv += p.article + ';' + p.name + ';' + p.priority + ';' + (p.dailySales || 0).toFixed(2) + ';' + (p.daysOfStock || 0).toFixed(1) + ';' + p.recommendedOrder + ';' + (p.orderCost || 0).toFixed(2) + '\n'; } });
+    var csv = 'Артикул;Наименование;Продажи 30 дн.;Скорость/день;Остаток МС;Остаток Ozon;Остаток WB;Всего остаток;Дней запаса;Приоритет;К заказу;Стоимость\n';
+    lastOrderResult.products.forEach(function(p) {
+        if ((p.recommendedOrder || 0) > 0) {
+            var ms = p.ourWarehouse || 0, oz = p.ozonStock || 0, wb = p.wbStock || 0, total = ms + oz + wb;
+            csv += p.article + ';' + p.name + ';' + (p.salesLast30Days || 0) + ';' + (p.dailySales || 0).toFixed(2) + ';' + ms + ';' + oz + ';' + wb + ';' + total + ';' + (p.daysOfStock === 999 ? '—' : (p.daysOfStock || 0).toFixed(1)) + ';' + p.priority + ';' + p.recommendedOrder + ';' + (p.orderCost || 0).toFixed(2) + '\n';
+        }
+    });
     downloadCSV(csv, 'расчёт_заказа.csv');
     showToast('📊 CSV экспортирован');
 }
 
+var ordersTabInitialized = false;
+
 function initOrdersTab() {
+    if (ordersTabInitialized) return;
+    ordersTabInitialized = true;
     OrderCalculator.loadConfig();
     document.getElementById('btnCalculateOrders').addEventListener('click', calculateOrders);
     document.getElementById('btnExportOrders').addEventListener('click', exportOrdersCSV);
@@ -1674,6 +1842,159 @@ function initOrdersTab() {
             if (lastOrderResult) renderOrderTable(lastOrderResult);
         });
     });
+    // Подразделы: Заказы / Скорость продаж
+    document.querySelectorAll('[data-orders-sub]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var sub = this.dataset.ordersSub;
+            document.querySelectorAll('#page-orders .sub-nav-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('#page-orders .sub-page').forEach(function(p) { p.classList.remove('active'); });
+            this.classList.add('active');
+            document.getElementById('orders-sub-' + sub).classList.add('active');
+            if (sub === 'sales') initSalesTab();
+        });
+    });
+    // Скорость продаж
+    document.getElementById('btnRefreshSales').addEventListener('click', refreshSales);
+    document.getElementById('btnExportSales').addEventListener('click', exportSalesCSV);
+    document.querySelectorAll('[data-sales-mp]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('[data-sales-mp]').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            salesMarketplace = this.dataset.salesMp;
+            renderSales();
+        });
+    });
+    document.querySelectorAll('[data-sales-filter]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('[data-sales-filter]').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            salesFilter = this.dataset.salesFilter;
+            renderSales();
+        });
+    });
+}
+
+// ============ СКОРОСТЬ ПРОДАЖ ============
+var salesMarketplace = 'ozon'; // 'ozon' | 'wb'
+var salesFilter = 'all'; // 'all' | 'withSales' | 'noSales'
+var salesData = null; // { products: [...], lastUpdate: Date, marketplace: 'ozon'|'wb' }
+
+function initSalesTab() {
+    if (!salesData) refreshSales();
+    else renderSales();
+}
+
+async function refreshSales() {
+    try {
+        showToast('⏳ Загрузка скорости продаж...');
+        var statusEl = document.getElementById('salesApiStatus');
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--warning)">⏳ Загрузка данных...</span>';
+        var products = [];
+        if (salesMarketplace === 'ozon') {
+            // Ozon: остатки + продажи через API (3 ИП)
+            var articles = [];
+            ozonStockData.forEach(function(s) { if (s.article) articles.push(s.article); });
+            msStockData.forEach(function(s) { if (s.article) articles.push(s.article); });
+            articles = Array.from(new Set(articles));
+            if (!articles.length) { showToast('❌ Нет данных об остатках Ozon'); return; }
+            var stocks = await ozonFetchStocks(articles);
+            var sales = await ozonFetchSales(articles, 30);
+            var allArticles = new Set(Object.keys(stocks).concat(Object.keys(sales)));
+            allArticles.forEach(function(article) {
+                var stock = stocks[article] || { present: 0, name: article };
+                var sale = sales[article] || { ordered_units: 0 };
+                products.push({
+                    article: article,
+                    name: stock.name || article,
+                    sales30: sale.ordered_units || 0,
+                    stock: stock.present || 0,
+                    perDay: ((sale.ordered_units || 0) / 30)
+                });
+            });
+        } else {
+            // WB: пока нет API-ключа, используем данные из остатков WB (продажи = 0)
+            var wbArticles = [];
+            wbStockData.forEach(function(s) { if (s.article) wbArticles.push(s.article); });
+            wbArticles = Array.from(new Set(wbArticles));
+            wbArticles.forEach(function(article) {
+                var wb = wbStockData.find(function(s) { return s.article === article; });
+                products.push({
+                    article: article,
+                    name: wb ? wb.name || article : article,
+                    sales30: 0,
+                    stock: wb ? wb.balance || 0 : 0,
+                    perDay: 0
+                });
+            });
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--warning)">⚠ WB API не настроен — показаны только остатки. Для скорости продаж WB нужен API-ключ.</span>';
+        }
+        products.sort(function(a, b) { return (b.sales30 || 0) - (a.sales30 || 0); });
+        salesData = { products: products, lastUpdate: new Date(), marketplace: salesMarketplace };
+        renderSales();
+        showToast('✅ Скорость продаж обновлена: ' + products.length + ' товаров');
+    } catch (e) {
+        showToast('❌ Ошибка: ' + e.message);
+        var statusEl = document.getElementById('salesApiStatus');
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">⚠ ' + escapeHtml(e.message) + '</span>';
+    }
+}
+
+function renderSales() {
+    if (!salesData) return;
+    var products = salesData.products || [];
+    var statusEl = document.getElementById('salesApiStatus');
+    if (statusEl) {
+        var mpLabel = salesMarketplace === 'ozon' ? 'Ozon' : 'WB';
+        statusEl.innerHTML = '<span style="color:var(--success)">✅ ' + mpLabel + ': обновлено ' + salesData.lastUpdate.toLocaleTimeString('ru-RU') + ' · ' + products.length + ' товаров</span>';
+    }
+    var lastUpdateEl = document.getElementById('salesLastUpdate');
+    if (lastUpdateEl) lastUpdateEl.textContent = 'Последнее обновление: ' + salesData.lastUpdate.toLocaleString('ru-RU');
+
+    // Сводка
+    var total30 = products.reduce(function(s, p) { return s + (p.sales30 || 0); }, 0);
+    var withSales = products.filter(function(p) { return (p.sales30 || 0) > 0; });
+    var perDay = total30 / 30;
+    var top = products.length ? products[0] : null;
+    document.getElementById('salesSummary').style.display = 'block';
+    document.getElementById('salesTotal30').textContent = total30.toLocaleString('ru-RU');
+    document.getElementById('salesPerDay').textContent = perDay.toFixed(1);
+    document.getElementById('salesProductsWithSales').textContent = withSales.length;
+    if (top && top.sales30 > 0) {
+        document.getElementById('salesTopProduct').textContent = top.article;
+        document.getElementById('salesTopProductQty').textContent = top.sales30.toLocaleString('ru-RU') + ' шт. за 30 дн.';
+    } else {
+        document.getElementById('salesTopProduct').textContent = '—';
+        document.getElementById('salesTopProductQty').textContent = '—';
+    }
+
+    // Таблица
+    var filtered = products.slice();
+    if (salesFilter === 'withSales') filtered = filtered.filter(function(p) { return (p.sales30 || 0) > 0; });
+    else if (salesFilter === 'noSales') filtered = filtered.filter(function(p) { return (p.sales30 || 0) === 0; });
+    document.getElementById('salesTableContainer').style.display = 'block';
+    document.getElementById('salesTotalProducts').textContent = products.length;
+    document.getElementById('salesWithSalesCount').textContent = withSales.length;
+    var container = document.getElementById('salesTable');
+    if (!filtered.length) { container.innerHTML = '<div class="empty-state">Нет данных</div>'; return; }
+    var html = '<table><thead><tr><th>Артикул</th><th>Наименование</th><th class="num">Продажи 30 дн.</th><th class="num">Скорость/день</th><th class="num">Остаток</th><th class="num">Дней запаса</th></tr></thead><tbody>';
+    filtered.forEach(function(p) {
+        var days = p.perDay > 0 ? (p.stock / p.perDay).toFixed(1) : '—';
+        var daysClass = p.perDay > 0 && (p.stock / p.perDay) < 15 ? 'style="color:var(--danger);font-weight:700"' : '';
+        html += '<tr><td><code>' + escapeHtml(p.article) + '</code></td><td>' + escapeHtml(p.name) + '</td><td class="num" style="font-weight:700">' + (p.sales30 || 0).toLocaleString('ru-RU') + '</td><td class="num">' + (p.perDay || 0).toFixed(2) + '</td><td class="num">' + (p.stock || 0).toLocaleString('ru-RU') + '</td><td class="num" ' + daysClass + '>' + days + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function exportSalesCSV() {
+    if (!salesData) { showToast('Сначала обновите данные'); return; }
+    var csv = 'Артикул;Наименование;Продажи 30 дн.;Скорость/день;Остаток;Дней запаса\n';
+    salesData.products.forEach(function(p) {
+        var days = p.perDay > 0 ? (p.stock / p.perDay).toFixed(1) : '—';
+        csv += p.article + ';' + p.name + ';' + (p.sales30 || 0) + ';' + (p.perDay || 0).toFixed(2) + ';' + (p.stock || 0) + ';' + days + '\n';
+    });
+    downloadCSV(csv, 'скорость_продаж_' + salesMarketplace + '.csv');
+    showToast('📊 CSV экспортирован');
 }
 
 // ============ EXPENSES & TRANSFERS ============

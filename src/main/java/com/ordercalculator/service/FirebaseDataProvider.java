@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -14,9 +15,10 @@ import java.util.stream.Collectors;
 /**
  * Реализация DataProvider через Firebase.
  * Берёт реальные данные из Firestore (отгрузки, остатки).
+ * Активируется только когда firebase.enabled=true.
  */
 @Component
-@ConditionalOnBean(name = "firestore")
+@ConditionalOnProperty(name = "firebase.enabled", havingValue = "true")
 public class FirebaseDataProvider implements DataProvider {
 
     private static final Logger log = LoggerFactory.getLogger(FirebaseDataProvider.class);
@@ -246,7 +248,7 @@ public class FirebaseDataProvider implements DataProvider {
     public Map<String, ProductSales> getProductSales(List<String> articles) {
         Map<String, ProductSales> result = new HashMap<>();
         
-        // Группируем отгрузки по артикулам (city) и считаем продажи
+        // 1. Firebase данные (из отгрузок)
         Map<String, Integer> salesData = firebaseRepository.getSalesLast30Days();
         
         for (String article : articles) {
@@ -254,6 +256,40 @@ public class FirebaseDataProvider implements DataProvider {
             ps.setArticle(article);
             ps.setSalesLast30Days(salesData.getOrDefault(article, 0));
             result.put(article, ps);
+        }
+
+        // 2. Донагружаем продажи из API Ozon (если настроен)
+        if (ozonApiService != null && ozonApiService.isConfigured() && !articles.isEmpty()) {
+            try {
+                Map<String, ProductSales> ozonSales = ozonApiService.getSales(articles, 30);
+                for (Map.Entry<String, ProductSales> e : ozonSales.entrySet()) {
+                    result.merge(e.getKey(), e.getValue(), (existing, incoming) -> {
+                        existing.setSalesLast30Days(existing.getSalesLast30Days() + incoming.getSalesLast30Days());
+                        existing.setSalesLast7Days(incoming.getSalesLast7Days());
+                        return existing;
+                    });
+                }
+                log.info("Ozon API: обновлено {} продаж", ozonSales.size());
+            } catch (Exception ex) {
+                log.warn("Ozon API продажи недоступны: {}", ex.getMessage());
+            }
+        }
+
+        // 3. Донагружаем продажи из API WB (если настроен)
+        if (wbApiService != null && wbApiService.isConfigured() && !articles.isEmpty()) {
+            try {
+                Map<String, ProductSales> wbSales = wbApiService.getSales(articles, 30);
+                for (Map.Entry<String, ProductSales> e : wbSales.entrySet()) {
+                    result.merge(e.getKey(), e.getValue(), (existing, incoming) -> {
+                        existing.setSalesLast30Days(existing.getSalesLast30Days() + incoming.getSalesLast30Days());
+                        existing.setSalesLast7Days(existing.getSalesLast7Days() + incoming.getSalesLast7Days());
+                        return existing;
+                    });
+                }
+                log.info("WB API: обновлено {} продаж", wbSales.size());
+            } catch (Exception ex) {
+                log.warn("WB API продажи недоступны: {}", ex.getMessage());
+            }
         }
 
         return result;

@@ -4,3 +4,16 @@ target/
 .DS_Store
 node_modules/
 *.log
+
+# Firebase credentials (не публиковать на GitHub)
+serviceAccountKey.json
+firebase-admin.json
+*.key
+*.p12
+*.pem
+
+# API keys and secrets
+application-local.properties
+application-secret.properties
+.env
+.secrets
