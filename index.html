@@ -345,78 +345,144 @@
 
     <!-- ============ СТРАНИЦА: Заказы (Order Calculator) ============ -->
     <div class="page" id="page-orders">
-        <h1>📦 Расчёт потребности в заказе</h1>
-        <p class="subtitle">Автоматический расчёт заказа на основе остатков и скорости продаж из Firebase</p>
-
-        <div class="controls" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary" id="btnCalculateOrders">🔄 Рассчитать заказ</button>
-            <button type="button" class="btn btn-outline btn-sm" id="btnExportOrders">📊 Экспорт CSV</button>
-            <span style="font-size:12px;color:var(--text-secondary);" id="ordersLastUpdate">Последнее обновление: —</span>
+        <h1>Заказы и скорость продаж</h1>
+        <p class="subtitle">Расчёт заказа и скорость продаж по Ozon и WB</p>
+        <div class="sub-nav">
+            <button type="button" class="sub-nav-btn active" data-orders-sub="orders">Заказы</button>
+            <button type="button" class="sub-nav-btn" data-orders-sub="sales">Скорость продаж</button>
         </div>
 
-        <!-- Сводка по заказу -->
-        <div id="ordersSummary" style="display:none;">
-            <div class="analytics-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
-                <div class="analytics-card total-card">
-                    <div class="ac-label"><span class="ac-icon">📦</span>Всего к заказу</div>
-                    <div style="font-size:32px;font-weight:700;" id="totalOrderQuantity">0</div>
-                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+        <!-- ===== Подраздел: Заказы ===== -->
+        <div class="sub-page active" id="orders-sub-orders">
+            <div class="controls" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary" id="btnCalculateOrders">Рассчитать заказ</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnExportOrders">Экспорт CSV</button>
+                <span style="font-size:12px;color:var(--text-secondary);" id="ordersLastUpdate">Последнее обновление: —</span>
+            </div>
+            <div id="ozonApiStatus" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;padding:8px 12px;background:var(--surface);border-radius:8px;border:1px solid var(--border);">Ozon API не настроен</div>
+
+            <!-- Сводка по заказу -->
+            <div id="ordersSummary" style="display:none;">
+                <div class="analytics-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+                    <div class="analytics-card total-card">
+                        <div class="ac-label"><span class="ac-icon"></span>Всего к заказу</div>
+                        <div style="font-size:32px;font-weight:700;" id="totalOrderQuantity">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #e53e3e;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#e53e3e;"></span>Срочно</div>
+                        <div style="font-size:28px;font-weight:700;color:#e53e3e;" id="ordersUrgentQuantity">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #d69e2e;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#d69e2e;"></span>Обычный</div>
+                        <div style="font-size:28px;font-weight:700;color:#d69e2e;" id="ordersNormalQuantity">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #38a169;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#38a169;"></span>Плановый</div>
+                        <div style="font-size:28px;font-weight:700;color:#38a169;" id="ordersPlannedQuantity">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #667eea;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#667eea;"></span>Общая стоимость</div>
+                        <div style="font-size:28px;font-weight:700;color:#667eea;" id="totalOrderCost">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">руб.</div>
+                    </div>
                 </div>
-                <div class="analytics-card" style="border-left:4px solid #e53e3e;">
-                    <div class="ac-label"><span class="ac-icon" style="background:#e53e3e;">!</span>Срочно</div>
-                    <div style="font-size:28px;font-weight:700;color:#e53e3e;" id="ordersUrgentQuantity">0</div>
-                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+            </div>
+
+            <!-- Таблица с расчётом -->
+            <div id="ordersTableContainer" style="display:none;">
+                <div class="table-controls" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border-radius:12px 12px 0 0;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;gap:16px;font-size:13px;">
+                        <span>Всего: <strong id="ordersTotalProducts">0</strong></span>
+                        <span>К заказу: <strong id="ordersProductsToOrder">0</strong></span>
+                    </div>
+                    <div class="filters" style="display:flex;gap:6px;">
+                        <button type="button" class="filter-btn active" data-order-filter="all">Все</button>
+                        <button type="button" class="filter-btn" data-order-filter="urgent">Срочные</button>
+                        <button type="button" class="filter-btn" data-order-filter="normal">Обычные</button>
+                        <button type="button" class="filter-btn" data-order-filter="planned">Плановые</button>
+                    </div>
                 </div>
-                <div class="analytics-card" style="border-left:4px solid #d69e2e;">
-                    <div class="ac-label"><span class="ac-icon" style="background:#d69e2e;">⚠</span>Обычный</div>
-                    <div style="font-size:28px;font-weight:700;color:#d69e2e;" id="ordersNormalQuantity">0</div>
-                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                <div class="table-wrap" id="ordersTable" style="border-radius:0 0 12px 12px;">
+                    <div class="empty-state">Нажмите «Рассчитать заказ»</div>
                 </div>
-                <div class="analytics-card" style="border-left:4px solid #38a169;">
-                    <div class="ac-label"><span class="ac-icon" style="background:#38a169;">✓</span>Плановый</div>
-                    <div style="font-size:28px;font-weight:700;color:#38a169;" id="ordersPlannedQuantity">0</div>
-                    <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+            </div>
+
+            <!-- Настройки расчёта -->
+            <div class="form-card" style="margin-top:20px;">
+                <div style="font-size:14px;font-weight:600;margin-bottom:12px;">Настройки расчёта</div>
+                <div class="form-row">
+                    <div class="field"><label>Горизонт срочных (дней)</label><input type="number" id="urgentHorizon" value="20" min="1"></div>
+                    <div class="field"><label>Горизонт обычных (дней)</label><input type="number" id="normalHorizon" value="30" min="1"></div>
+                    <div class="field"><label>Горизонт плановых (дней)</label><input type="number" id="plannedHorizon" value="45" min="1"></div>
+                    <div class="field"><label>Порог срочности (дней)</label><input type="number" id="urgentThreshold" value="7" min="1"></div>
+                    <div class="field"><label>Порог обычных (дней)</label><input type="number" id="normalThreshold" value="15" min="1"></div>
+                    <div class="field"><label>Минимальный заказ (шт)</label><input type="number" id="minOrderQty" value="10" min="1"></div>
                 </div>
-                <div class="analytics-card" style="border-left:4px solid #667eea;">
-                    <div class="ac-label"><span class="ac-icon" style="background:#667eea;">💰</span>Общая стоимость</div>
-                    <div style="font-size:28px;font-weight:700;color:#667eea;" id="totalOrderCost">0</div>
-                    <div style="font-size:11px;color:var(--text-tertiary);">руб.</div>
+                <div style="margin-top:12px;">
+                    <button type="button" class="btn btn-primary btn-sm" id="btnSaveOrderSettings">Сохранить настройки</button>
                 </div>
             </div>
         </div>
 
-        <!-- Таблица с расчётом -->
-        <div id="ordersTableContainer" style="display:none;">
-            <div class="table-controls" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border-radius:12px 12px 0 0;flex-wrap:wrap;gap:8px;">
-                <div style="display:flex;gap:16px;font-size:13px;">
-                    <span>Всего: <strong id="ordersTotalProducts">0</strong></span>
-                    <span>К заказу: <strong id="ordersProductsToOrder">0</strong></span>
-                </div>
+        <!-- ===== Подраздел: Скорость продаж ===== -->
+        <div class="sub-page" id="orders-sub-sales">
+            <div class="controls" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
                 <div class="filters" style="display:flex;gap:6px;">
-                    <button type="button" class="filter-btn active" data-order-filter="all">Все</button>
-                    <button type="button" class="filter-btn" data-order-filter="urgent">🟥 Срочные</button>
-                    <button type="button" class="filter-btn" data-order-filter="normal">🟨 Обычные</button>
-                    <button type="button" class="filter-btn" data-order-filter="planned">🟩 Плановые</button>
+                    <button type="button" class="filter-btn active" data-sales-mp="ozon">Ozon</button>
+                    <button type="button" class="filter-btn" data-sales-mp="wb">WB</button>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" id="btnRefreshSales">Обновить</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btnExportSales">Экспорт CSV</button>
+                <span style="font-size:12px;color:var(--text-secondary);" id="salesLastUpdate">Последнее обновление: —</span>
+            </div>
+            <div id="salesApiStatus" style="font-size:12px;color:var(--text-secondary);margin-bottom:16px;padding:8px 12px;background:var(--surface);border-radius:8px;border:1px solid var(--border);">Нажмите «Обновить» для загрузки данных</div>
+
+            <!-- Сводка по скорости продаж -->
+            <div id="salesSummary" style="display:none;">
+                <div class="analytics-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+                    <div class="analytics-card total-card">
+                        <div class="ac-label"><span class="ac-icon"></span>Продажи за 30 дней</div>
+                        <div style="font-size:32px;font-weight:700;" id="salesTotal30">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">шт.</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #667eea;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#667eea;"></span>Скорость/день</div>
+                        <div style="font-size:28px;font-weight:700;color:#667eea;" id="salesPerDay">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">шт./день</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #38a169;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#38a169;"></span>Товаров с продажами</div>
+                        <div style="font-size:28px;font-weight:700;color:#38a169;" id="salesProductsWithSales">0</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);">поз.</div>
+                    </div>
+                    <div class="analytics-card" style="border-left:4px solid #e53e3e;">
+                        <div class="ac-label"><span class="ac-icon" style="background:#e53e3e;"></span>Топ-товар</div>
+                        <div style="font-size:20px;font-weight:700;color:#e53e3e;" id="salesTopProduct">—</div>
+                        <div style="font-size:11px;color:var(--text-tertiary);" id="salesTopProductQty">—</div>
+                    </div>
                 </div>
             </div>
-            <div class="table-wrap" id="ordersTable" style="border-radius:0 0 12px 12px;">
-                <div class="empty-state">Нажмите «Рассчитать заказ»</div>
-            </div>
-        </div>
 
-        <!-- Настройки расчёта -->
-        <div class="form-card" style="margin-top:20px;">
-            <div style="font-size:14px;font-weight:600;margin-bottom:12px;">⚙️ Настройки расчёта</div>
-            <div class="form-row">
-                <div class="field"><label>Горизонт срочных (дней)</label><input type="number" id="urgentHorizon" value="20" min="1"></div>
-                <div class="field"><label>Горизонт обычных (дней)</label><input type="number" id="normalHorizon" value="30" min="1"></div>
-                <div class="field"><label>Горизонт плановых (дней)</label><input type="number" id="plannedHorizon" value="45" min="1"></div>
-                <div class="field"><label>Порог срочности (дней)</label><input type="number" id="urgentThreshold" value="7" min="1"></div>
-                <div class="field"><label>Порог обычных (дней)</label><input type="number" id="normalThreshold" value="15" min="1"></div>
-                <div class="field"><label>Минимальный заказ (шт)</label><input type="number" id="minOrderQty" value="10" min="1"></div>
-            </div>
-            <div style="margin-top:12px;">
-                <button type="button" class="btn btn-primary btn-sm" id="btnSaveOrderSettings">💾 Сохранить настройки</button>
+            <!-- Таблица скорости продаж -->
+            <div id="salesTableContainer" style="display:none;">
+                <div class="table-controls" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border-radius:12px 12px 0 0;flex-wrap:wrap;gap:8px;">
+                    <div style="display:flex;gap:16px;font-size:13px;">
+                        <span>Всего: <strong id="salesTotalProducts">0</strong></span>
+                        <span>С продажами: <strong id="salesWithSalesCount">0</strong></span>
+                    </div>
+                    <div class="filters" style="display:flex;gap:6px;">
+                        <button type="button" class="filter-btn active" data-sales-filter="all">Все</button>
+                        <button type="button" class="filter-btn" data-sales-filter="withSales">С продажами</button>
+                        <button type="button" class="filter-btn" data-sales-filter="noSales">Без продаж</button>
+                    </div>
+                </div>
+                <div class="table-wrap" id="salesTable" style="border-radius:0 0 12px 12px;">
+                    <div class="empty-state">Нажмите «Обновить»</div>
+                </div>
             </div>
         </div>
     </div>
