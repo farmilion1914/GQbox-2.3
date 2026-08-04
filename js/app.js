@@ -55,6 +55,7 @@ var WB_ACCOUNTS = [
     { apiKey: 'eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjYwMzAydjEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjMsImVudCI6MSwiZXhwIjoxODAxNjE1Nzg2LCJmb3IiOiJzZWxmIiwiaWQiOiIwMTlmY2NkMi1hYmRmLTdhNTItYTY3OS1hY2U0YjdhYWY5ZGYiLCJpaWQiOjI4MDE3NjMxLCJvaWQiOjQ5OTQ0LCJzIjoxMDczNzQ1MDE0LCJzaWQiOiIxMDc4ZjdhOS1kN2Q5LTU2YzMtYjdhYy01M2UwOTQzY2NkYzYiLCJ0IjpmYWxzZSwidWlkIjoyODAxNzYzMX0.llzOtv9ToLKv7rIhZnwSzbzVCuiFmeuvRXVlEc_qDmJgfV0VOPKb5U_rNs0oZak6SSKR6lRWY7HPdKQ90b10pQ', label: 'ИП КЮА' }
 ];
 var WB_API_BASE = 'https://statistics-api.wildberries.ru';
+var WB_SUPPLIERS_API_BASE = 'https://suppliers-api.wildberries.ru';
 var wbApiInProgress = false;
 var wbApiLastUpdate = null;
 var wbApiLastError = null;
@@ -1769,11 +1770,14 @@ async function wbFetchStocks(articles) {
     for (var i = 0; i < WB_ACCOUNTS.length; i++) {
         var account = WB_ACCOUNTS[i];
         try {
-            // Новый API /api/v3/supplier/stocks — текущие остатки по складам с пагинацией
+            // Остатки: suppliers-api.wildberries.ru/api/v3/stocks (текущие по складам, с пагинацией)
             var offset = 0;
             var limit = 1000;
             while (true) {
-                var resp = await wbApiRequest(account, '/api/v3/supplier/stocks?limit=' + limit + '&offset=' + offset);
+                var url = WB_SUPPLIERS_API_BASE + '/api/v3/stocks?limit=' + limit + '&offset=' + offset;
+                var response = await fetch(url, { method: 'GET', headers: { 'Authorization': account.apiKey } });
+                if (!response.ok) throw new Error('WB /api/v3/stocks: ' + response.status);
+                var resp = await response.json();
                 var rows = (resp && resp.stocks) || [];
                 rows.forEach(function(r) {
                     var article = r && r.supplierArticle;
