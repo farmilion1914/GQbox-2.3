@@ -1783,7 +1783,9 @@ async function wbFetchStocks(articles) {
                     var article = r && r.supplierArticle;
                     if (!article || typeof article !== 'string') return;
                     if (!result[article]) result[article] = { quantity: 0, name: article };
-                    result[article].quantity += r.quantity || 0;
+                    // /api/v3/stocks: поле quantityFull (или amount) — общее количество на складе
+                    var qty = r.quantityFull !== undefined ? r.quantityFull : (r.amount !== undefined ? r.amount : (r.quantity || 0));
+                    result[article].quantity += qty;
                 });
                 var total = (resp && resp.total) || 0;
                 offset += rows.length;
