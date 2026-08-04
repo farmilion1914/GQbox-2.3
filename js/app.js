@@ -1,4 +1,4 @@
-// ================================================================
+  // ================================================================
 // GQbox — Полное приложение (GQbox отгрузки + Order Calculator)
 // ================================================================
 
@@ -966,9 +966,14 @@ function renderLog() {
 
 function updateLogSupplier(id, v) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { e.supplier = v; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ supplier: v }).catch(function() {}); } }
 function updateLogPallets(id, v) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { e.boxes = parseInt(v) || 0; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ boxes: e.boxes }).catch(function() {}); } }
-function updateLogAmount(id, v) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { var a = parseFloat(v) || 0, rate = e.nds === '22%' ? 1.22 : 1.07; e.amount = a; e.amountFull = Math.round(a * rate * 100) / 100; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ amount: e.amount, amountFull: e.amountFull }).catch(function() {}); renderLog(); renderLogAnalytics(); } }
-function updateLogNds(id, v) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { e.nds = v; var rate = v === '22%' ? 1.22 : 1.07; e.amountFull = Math.round((e.amount || 0) * rate * 100) / 100; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ nds: v, amountFull: e.amountFull }).catch(function() {}); renderLog(); renderLogAnalytics(); } }
-function toggleLogPaid(id) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { e.paid = !e.paid; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ paid: e.paid }).catch(function() {}); renderLog(); } }
+var logAnalyticsDebounceTimer = null;
+function debounceRenderLogAnalytics() {
+    if (logAnalyticsDebounceTimer) clearTimeout(logAnalyticsDebounceTimer);
+    logAnalyticsDebounceTimer = setTimeout(function() { renderLogAnalytics(); }, 500);
+}
+function updateLogAmount(id, v) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { var a = parseFloat(v) || 0, rate = e.nds === '22%' ? 1.22 : 1.07; e.amount = a; e.amountFull = Math.round(a * rate * 100) / 100; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ amount: e.amount, amountFull: e.amountFull }).catch(function() {}); debounceRenderLogAnalytics(); } }
+function updateLogNds(id, v) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { e.nds = v; var rate = v === '22%' ? 1.22 : 1.07; e.amountFull = Math.round((e.amount || 0) * rate * 100) / 100; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ nds: v, amountFull: e.amountFull }).catch(function() {}); debounceRenderLogAnalytics(); } }
+function toggleLogPaid(id) { var e = logEntries.find(function(x) { return String(x.id) === String(id); }); if (e) { e.paid = !e.paid; saveAllToLocalStorage(); if (isOnline) db.collection('logistics').doc(String(id)).update({ paid: e.paid }).catch(function() {}); var btn = document.querySelector('[data-log-paid="' + id + '"]'); if (btn) { btn.className = 'btn-status ' + (e.paid ? 'paid' : 'unpaid'); btn.textContent = e.paid ? 'Оплачен' : 'Не опл.'; } } }
 
 async function addLogEntry() {
     var de = document.getElementById('logDate'), me = document.getElementById('logMP'), te = document.getElementById('logType'), se = document.getElementById('logSupplier'), ce = document.getElementById('logCity'), qe = document.getElementById('logQty'), be = document.getElementById('logBoxes'), ae = document.getElementById('logAmount'), ne = document.getElementById('logNDS');
