@@ -2551,8 +2551,14 @@ function initApp() {
         if (t.hasAttribute('data-ms-page')) { var p = t.getAttribute('data-ms-page'); if (p === 'first') msStockPage = 1; else if (p === 'prev') msStockPage = Math.max(1, msStockPage - 1); else if (p === 'next') msStockPage = Math.min(msStockPage + 1, Math.ceil(getFilteredMsStockData().length / msStockPerPage)); else if (p === 'last') msStockPage = Math.ceil(getFilteredMsStockData().length / msStockPerPage); else msStockPage = parseInt(p); renderMsStockTable(); }
         if (t.hasAttribute('data-ved-delete')) { e.stopPropagation(); deleteVedSupply(t.getAttribute('data-ved-delete')); }
         if (t.hasAttribute('data-ved-include')) { e.stopPropagation(); toggleVedIncludeInModel(t.getAttribute('data-ved-include')); }
-        if (t.hasAttribute('data-ved-list-input')) { e.stopPropagation(); return; }
-        if (t.hasAttribute('data-ved-list-index')) { e.preventDefault(); var fi = t.querySelector('input[data-ved-list-input]'); if (fi) fi.click(); return; }
+        var vedUploadBox = t.closest('.file-upload-box[data-ved-list-index]');
+        if (vedUploadBox) {
+            if (t.hasAttribute('data-ved-list-input')) { return; }
+            e.preventDefault();
+            var fi = vedUploadBox.querySelector('input[data-ved-list-input]');
+            if (fi) fi.click();
+            return;
+        }
         if (t.hasAttribute('data-ved-list-remove')) { e.stopPropagation(); removeVedList(parseInt(t.getAttribute('data-ved-list-remove'))); }
         if (t.hasAttribute('data-log-paid')) { toggleLogPaid(t.getAttribute('data-log-paid')); }
         if (t.hasAttribute('data-log-delete')) { deleteLogEntry(t.getAttribute('data-log-delete')); }
