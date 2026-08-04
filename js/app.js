@@ -50,6 +50,16 @@ var ozonApiLastUpdate = null;
 var ozonApiLastError = null;
 var ozonApiProductsCache = null; // { articles: {}, skus: {} }
 
+// ============ WB API (ИП КЮА, из браузера) ============
+var WB_ACCOUNTS = [
+    { apiKey: 'eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjYwMzAydjEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjMsImVudCI6MSwiZXhwIjoxODAxNjE1Nzg2LCJmb3IiOiJzZWxmIiwiaWQiOiIwMTlmY2NkMi1hYmRmLTdhNTItYTY3OS1hY2U0YjdhYWY5ZGYiLCJpaWQiOjI4MDE3NjMxLCJvaWQiOjQ5OTQ0LCJzIjoxMDczNzQ1MDE0LCJzaWQiOiIxMDc4ZjdhOS1kN2Q5LTU2YzMtYjdhYy01M2UwOTQzY2NkYzYiLCJ0IjpmYWxzZSwidWlkIjoyODAxNzYzMX0.llzOtv9ToLKv7rIhZnwSzbzVCuiFmeuvRXVlEc_qDmJgfV0VOPKb5U_rNs0oZak6SSKR6lRWY7HPdKQ90b10pQ', label: 'ИП КЮА' }
+];
+var WB_API_BASE = 'https://statistics-api.wildberries.ru';
+var wbApiInProgress = false;
+var wbApiLastUpdate = null;
+var wbApiLastError = null;
+var wbApiProductsCache = null; // { articles: {} }
+
 var routesDB = {
     'Казань': { schedule: 'В любой день', delivery: '1-2 дня' },
     'Краснодар': { schedule: 'Пн-Ср, Ср-Пт, Пт-Вс', delivery: '2-3 дня' },
@@ -1741,6 +1751,107 @@ function renderOzonApiStatus() {
     el.innerHTML = parts.join(' · ') || 'Ozon API не настроен';
 }
 
+// ============ WB API (прямо из браузера) ============
+async function wbApiRequest(account, path) {
+    var url = WB_API_BASE + path;
+    var response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': account.apiKey }
+    });
+    if (!response.ok) throw new Error('WB ' + path + ': ' + response.status);
+    return response.json();
+}
+
+async function wbFetchStocks(articles) {
+    var result = {}; // article -> { quantity, name }
+    if (!articles || !articles.length) return result;
+    if (!wbApiProductsCache) wbApiProductsCache = { articles: {} };
+    var dateFrom = new Date();
+    dateFrom.setDate(dateFrom.getDate() - 3);
+    var fmt = function(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    for (var i = 0; i < WB_ACCOUNTS.length; i++) {
+        var account = WB_ACCOUNTS[i];
+        try {
+            var rows = await wbApiRequest(account, '/api/v1/supplier/stocks?dateFrom=' + fmt(dateFrom) + '&timezone=Europe/Moscow');
+            if (!Array.isArray(rows)) rows = rows && rows.result ? rows.result : [];
+            rows.forEach(function(r) {
+                var article = r && r.supplierArticle;
+                if (!article || typeof article !== 'string') return;
+                if (!result[article]) result[article] = { quantity: 0, name: article };
+                result[article].quantity += r.quantity || 0;
+            });
+        } catch (e) {
+            wbApiLastError = 'WB («' + account.label + '») — остатки: ' + e.message;
+        }
+    }
+    return result;
+}
+
+async function wbFetchSales(articles, days) {
+    var result = {}; // article -> { ordered_units }
+    if (!articles || !articles.length) return result;
+    days = days || 30;
+    var dateFrom = new Date();
+    dateFrom.setDate(dateFrom.getDate() - days);
+    var fmt = function(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    for (var i = 0; i < WB_ACCOUNTS.length; i++) {
+        var account = WB_ACCOUNTS[i];
+        try {
+            var rows = await wbApiRequest(account, '/api/v1/supplier/orders?dateFrom=' + fmt(dateFrom) + '&flag=1&timezone=Europe/Moscow');
+            if (!Array.isArray(rows)) rows = rows && rows.result ? rows.result : [];
+            rows.forEach(function(r) {
+                var article = r && r.supplierArticle;
+                if (!article || typeof article !== 'string') return;
+                if (!result[article]) result[article] = { ordered_units: 0 };
+                result[article].ordered_units += r.quantity || 1;
+            });
+        } catch (e) {
+            wbApiLastError = 'WB («' + account.label + '») — продажи: ' + e.message;
+        }
+    }
+    return result;
+}
+
+async function applyWbApiToProducts(products) {
+    if (!WB_ACCOUNTS.length) return products;
+    wbApiInProgress = true;
+    wbApiLastError = null;
+    try {
+        var articles = products.map(function(p) { return p.article; });
+        var stocksPromise = wbFetchStocks(articles);
+        var salesPromise = wbFetchSales(articles, 30);
+        var stocks = await stocksPromise;
+        var sales = await salesPromise;
+        var updated = 0;
+        products.forEach(function(p) {
+            var stock = stocks[p.article];
+            if (stock) {
+                if (stock.quantity > 0) p.wbStock = (p.wbStock || 0) + stock.quantity;
+                updated++;
+            }
+            var sale = sales[p.article];
+            if (sale && sale.ordered_units > 0) {
+                p.salesLast30Days = (p.salesLast30Days || 0) + sale.ordered_units;
+                updated++;
+            }
+        });
+        wbApiLastUpdate = new Date().toISOString();
+        return { products: products, updated: updated };
+    } finally {
+        wbApiInProgress = false;
+    }
+}
+
+function renderWbApiStatus() {
+    var el = document.getElementById('wbApiStatus');
+    if (!el) return;
+    var parts = [];
+    if (wbApiInProgress) parts.push('<span style="color:var(--warning)">⏳ Синхронизация WB API...</span>');
+    if (wbApiLastUpdate) parts.push('<span style="color:var(--success)">✅ WB API: обновлено ' + new Date(wbApiLastUpdate).toLocaleTimeString('ru-RU') + '</span>');
+    if (wbApiLastError) parts.push('<span style="color:var(--danger)">⚠ ' + escapeHtml(wbApiLastError) + '</span>');
+    el.innerHTML = parts.join(' · ') || 'WB API не настроен';
+}
+
 function getProductsForOrderCalculation() {
     var products = [];
     var articles = new Set();
@@ -1804,16 +1915,21 @@ async function calculateOrders() {
         showToast('⏳ Выполняется расчёт...');
         var products = getProductsForOrderCalculation();
         if (!products.length) { showToast('❌ Нет данных для расчёта. Загрузите остатки.'); return; }
-        // Получаем реальные остатки и продажи Ozon (3 ИП) прямо из браузера
-        var apiResult = await applyOzonApiToProducts(products);
-        products = apiResult.products;
+        // Получаем реальные остатки и продажи Ozon (3 ИП) и WB (ИП КЮА) прямо из браузера
+        var ozonResult = await applyOzonApiToProducts(products);
+        products = ozonResult.products;
+        var wbResult = await applyWbApiToProducts(products);
+        products = wbResult.products;
         var result = OrderCalculator.calculateAll(products);
         lastOrderResult = result;
         renderOrderSummary(result.summary);
         renderOrderTable(result);
         renderOzonApiStatus();
-        var apiInfo = apiResult.updated > 0 ? ' · Ozon API: ' + apiResult.updated + ' обновл.' : '';
-        document.getElementById('ordersLastUpdate').textContent = 'Последнее обновление: ' + new Date().toLocaleString() + apiInfo;
+        renderWbApiStatus();
+        var apiInfo = [];
+        if (ozonResult.updated > 0) apiInfo.push('Ozon API: ' + ozonResult.updated + ' обновл.');
+        if (wbResult.updated > 0) apiInfo.push('WB API: ' + wbResult.updated + ' обновл.');
+        document.getElementById('ordersLastUpdate').textContent = 'Последнее обновление: ' + new Date().toLocaleString() + (apiInfo.length ? ' · ' + apiInfo.join(' · ') : '');
         showToast('✅ Расчёт выполнен: ' + result.summary.productsToOrder + ' товаров к заказу');
     } catch (error) { showToast('❌ Ошибка: ' + error.message); }
 }
@@ -1918,21 +2034,27 @@ async function refreshSales() {
                 });
             });
         } else {
-            // WB: пока нет API-ключа, используем данные из остатков WB (продажи = 0)
+            // WB: реальные остатки и продажи через API (ИП КЮА)
             var wbArticles = [];
             wbStockData.forEach(function(s) { if (s.article) wbArticles.push(s.article); });
+            msStockData.forEach(function(s) { if (s.article) wbArticles.push(s.article); });
             wbArticles = Array.from(new Set(wbArticles));
-            wbArticles.forEach(function(article) {
-                var wb = wbStockData.find(function(s) { return s.article === article; });
+            if (!wbArticles.length) { showToast('❌ Нет данных об остатках WB'); return; }
+            var wbStocks = await wbFetchStocks(wbArticles);
+            var wbSales = await wbFetchSales(wbArticles, 30);
+            var wbAllArticles = new Set(Object.keys(wbStocks).concat(Object.keys(wbSales)));
+            wbAllArticles.forEach(function(article) {
+                var wbStock = wbStocks[article] || { quantity: 0, name: article };
+                var wbSale = wbSales[article] || { ordered_units: 0 };
                 products.push({
                     article: article,
-                    name: wb ? wb.name || article : article,
-                    sales30: 0,
-                    stock: wb ? wb.balance || 0 : 0,
-                    perDay: 0
+                    name: wbStock.name || article,
+                    sales30: wbSale.ordered_units || 0,
+                    stock: wbStock.quantity || 0,
+                    perDay: ((wbSale.ordered_units || 0) / 30)
                 });
             });
-            if (statusEl) statusEl.innerHTML = '<span style="color:var(--warning)">⚠ WB API не настроен — показаны только остатки. Для скорости продаж WB нужен API-ключ.</span>';
+            renderWbApiStatus();
         }
         products.sort(function(a, b) { return (b.sales30 || 0) - (a.sales30 || 0); });
         salesData = { products: products, lastUpdate: new Date(), marketplace: salesMarketplace };
