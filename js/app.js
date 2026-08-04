@@ -918,10 +918,11 @@ function renderLogAnalytics() {
 
     h += '<div class="log-history-toggle" id="logMonthsToggle"><span class="toggle-arrow">▶</span> Показать историю по месяцам <span style="margin-left:auto;font-size:10px;color:var(--text-tertiary)">' + months.length + ' мес.</span></div>';
     h += '<div class="log-history-body" id="logMonthsBody" style="display:none">';
-    h += '<table class="log-table"><thead><tr><th>Месяц</th><th class="num">Всего товаров</th><th class="num">Всего сумма</th><th class="num">WB</th><th class="num">Ozon</th></tr></thead><tbody>';
+    h += '<table class="log-table"><thead><tr><th>Месяц</th><th class="num">Всего товаров</th><th class="num">Всего сумма</th><th class="num">Ср. цена/ед</th><th class="num">WB</th><th class="num">Ozon</th></tr></thead><tbody>';
     months.forEach(function(m) {
         var d = byMonth[m];
-        h += '<tr><td><b>' + m + '</b></td><td class="num">' + d.totalQty.toLocaleString('ru-RU') + '</td><td class="num">' + formatAmount(d.totalAmount) + ' ₽</td><td class="num"><span class="badge badge-wb">' + d.wbQty.toLocaleString('ru-RU') + '</span></td><td class="num"><span class="badge badge-ozon">' + d.ozQty.toLocaleString('ru-RU') + '</span></td></tr>';
+        var avgPrice = d.totalQty > 0 ? (d.totalAmount / d.totalQty).toFixed(2) : '0.00';
+        h += '<tr><td><b>' + m + '</b></td><td class="num">' + d.totalQty.toLocaleString('ru-RU') + '</td><td class="num">' + formatAmount(d.totalAmount) + ' ₽</td><td class="num">' + avgPrice + ' ₽</td><td class="num"><span class="badge badge-wb">' + d.wbQty.toLocaleString('ru-RU') + '</span></td><td class="num"><span class="badge badge-ozon">' + d.ozQty.toLocaleString('ru-RU') + '</span></td></tr>';
     });
     h += '</tbody></table></div></div>';
 
