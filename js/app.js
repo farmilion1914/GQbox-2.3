@@ -1797,7 +1797,7 @@ async function wbFetchSales(articles, days) {
     for (var i = 0; i < WB_ACCOUNTS.length; i++) {
         var account = WB_ACCOUNTS[i];
         try {
-            var rows = await wbApiRequest(account, '/api/v1/supplier/orders?dateFrom=' + fmt(dateFrom) + '&flag=1&timezone=Europe/Moscow');
+            var rows = await wbApiRequest(account, '/api/v1/supplier/orders?dateFrom=' + fmt(dateFrom) + '&flag=0&timezone=Europe/Moscow');
             if (!Array.isArray(rows)) rows = rows && rows.result ? rows.result : [];
             rows.forEach(function(r) {
                 var article = r && r.supplierArticle;
