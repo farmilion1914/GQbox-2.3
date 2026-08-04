@@ -596,6 +596,17 @@ tr:hover { background: var(--surface-hover); }
 .log-history-toggle.expanded .toggle-arrow { transform: rotate(180deg); transform-origin: center; }
 .log-history-body { display: none; }
 .log-history-body.show { display: block; }
+.log-month-row { cursor: pointer; }
+.log-month-row:hover { background: var(--surface-hover); }
+.log-month-row .toggle-arrow { font-size: 10px; display: inline-block; transition: transform .2s; }
+.log-month-row.expanded .toggle-arrow { transform: rotate(90deg); transform-origin: center; }
+.log-month-detail > td { padding: 0 !important; background: var(--surface-secondary, rgba(0,0,0,0.02)); }
+.log-month-detail-inner { padding: 12px 16px; }
+.log-month-summary { font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+.log-month-summary b { color: var(--text-primary); }
+.log-month-detail .log-table { margin-bottom: 4px; }
+.badge-paid { background: var(--success-bg, #e8f5e9); color: var(--success, #2e7d32); }
+.badge-unpaid { background: var(--danger-bg, #fce4ec); color: var(--danger, #c62828); }
 .log-edit-input {
     width: 100%; padding: 4px 6px; border: 1px solid var(--border);
     border-radius: 6px; font-size: 11px; background: var(--input-bg);

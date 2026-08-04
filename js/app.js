@@ -907,21 +907,28 @@ function renderLogAnalytics() {
     logEntries.forEach(function(e) {
         if (!e.date) return;
         var m = e.date.slice(0, 7);
-        if (!byMonth[m]) byMonth[m] = { wbQty: 0, ozQty: 0, wbAmount: 0, ozAmount: 0, totalQty: 0, totalAmount: 0 };
+        if (!byMonth[m]) byMonth[m] = { wbQty: 0, ozQty: 0, wbAmount: 0, ozAmount: 0, totalQty: 0, totalAmount: 0, entries: [] };
         var qty = e.qty || 0, amount = e.amountFull || e.amount || 0;
         byMonth[m].totalQty += qty;
         byMonth[m].totalAmount += amount;
         if (e.marketplace === 'Wildberries') { byMonth[m].wbQty += qty; byMonth[m].wbAmount += amount; }
         else { byMonth[m].ozQty += qty; byMonth[m].ozAmount += amount; }
+        byMonth[m].entries.push(e);
     });
     var months = Object.keys(byMonth).sort().reverse();
 
     h += '<div class="log-history-toggle" id="logMonthsToggle"><span class="toggle-arrow">▶</span> Показать историю по месяцам <span style="margin-left:auto;font-size:10px;color:var(--text-tertiary)">' + months.length + ' мес.</span></div>';
     h += '<div class="log-history-body" id="logMonthsBody" style="display:none">';
-    h += '<table class="log-table"><thead><tr><th>Месяц</th><th class="num">Всего товаров</th><th class="num">Всего сумма</th><th class="num">WB</th><th class="num">Ozon</th></tr></thead><tbody>';
+    h += '<table class="log-table"><thead><tr><th></th><th>Месяц</th><th class="num">Всего товаров</th><th class="num">Всего сумма</th><th class="num">WB</th><th class="num">Ozon</th></tr></thead><tbody>';
     months.forEach(function(m) {
         var d = byMonth[m];
-        h += '<tr><td><b>' + m + '</b></td><td class="num">' + d.totalQty.toLocaleString('ru-RU') + '</td><td class="num">' + formatAmount(d.totalAmount) + ' ₽</td><td class="num"><span class="badge badge-wb">' + d.wbQty.toLocaleString('ru-RU') + '</span></td><td class="num"><span class="badge badge-ozon">' + d.ozQty.toLocaleString('ru-RU') + '</span></td></tr>';
+        var mid = 'log-month-' + m.replace(/[^a-zA-Z0-9]/g, '-');
+        h += '<tr class="log-month-row" data-log-month="' + mid + '"><td><span class="toggle-arrow" id="arrow-' + mid + '">▶</span></td><td><b>' + m + '</b></td><td class="num">' + d.totalQty.toLocaleString('ru-RU') + '</td><td class="num">' + formatAmount(d.totalAmount) + ' ₽</td><td class="num"><span class="badge badge-wb">' + d.wbQty.toLocaleString('ru-RU') + '</span></td><td class="num"><span class="badge badge-ozon">' + d.ozQty.toLocaleString('ru-RU') + '</span></td></tr>';
+        h += '<tr id="' + mid + '" class="log-month-detail" style="display:none"><td colspan="6"><div class="log-month-detail-inner"><div class="log-month-summary">Записей: <b>' + d.entries.length + '</b> · WB: <b>' + d.wbQty.toLocaleString('ru-RU') + '</b> ед. / ' + formatAmount(d.wbAmount) + ' ₽ · Ozon: <b>' + d.ozQty.toLocaleString('ru-RU') + '</b> ед. / ' + formatAmount(d.ozAmount) + ' ₽</div><table class="log-table"><thead><tr><th>Дата</th><th>МП</th><th>Тип</th><th>Поставщик</th><th>Город</th><th class="num">Кол-во</th><th class="num">Пал.</th><th class="num">Сумма</th><th>НДС</th><th>Оплата</th></tr></thead><tbody>';
+        d.entries.slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).forEach(function(e) {
+            h += '<tr><td>' + e.date.split('-').reverse().join('.') + '</td><td><span class="badge ' + (e.marketplace === 'Wildberries' ? 'badge-wb' : 'badge-ozon') + '">' + escapeHtml(e.marketplace) + '</span></td><td>' + escapeHtml(e.type || 'FBO') + '</td><td>' + escapeHtml(e.supplier || '—') + '</td><td>' + escapeHtml(e.city || '') + '</td><td class="num">' + (e.qty || 0).toLocaleString('ru-RU') + '</td><td class="num">' + (e.boxes || 0) + '</td><td class="num">' + (e.amount || 0).toLocaleString('ru-RU') + ' ₽</td><td>' + escapeHtml(e.nds || '22%') + '</td><td><span class="badge ' + (e.paid ? 'badge-paid' : 'badge-unpaid') + '">' + (e.paid ? 'Оплачен' : 'Не опл.') + '</span></td></tr>';
+        });
+        h += '</tbody></table></div></td></tr>';
     });
     h += '</tbody></table></div></div>';
 
@@ -940,6 +947,20 @@ function renderLogAnalytics() {
                 : '<span class="toggle-arrow">▼</span> Скрыть историю';
         };
     }
+
+    // Bind per-month expand/collapse
+    document.querySelectorAll('.log-month-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var mid = row.getAttribute('data-log-month');
+            var detail = document.getElementById(mid);
+            var arrow = document.getElementById('arrow-' + mid);
+            if (!detail || !arrow) return;
+            var isOpen = detail.style.display !== 'none';
+            detail.style.display = isOpen ? 'none' : 'table-row';
+            arrow.textContent = isOpen ? '▶' : '▼';
+            row.classList.toggle('expanded', !isOpen);
+        });
+    });
 }
 
 function renderLog() {
