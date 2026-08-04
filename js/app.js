@@ -1766,20 +1766,25 @@ async function wbFetchStocks(articles) {
     var result = {}; // article -> { quantity, name }
     if (!articles || !articles.length) return result;
     if (!wbApiProductsCache) wbApiProductsCache = { articles: {} };
-    var dateFrom = new Date();
-    dateFrom.setDate(dateFrom.getDate() - 3);
-    var fmt = function(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
     for (var i = 0; i < WB_ACCOUNTS.length; i++) {
         var account = WB_ACCOUNTS[i];
         try {
-            var rows = await wbApiRequest(account, '/api/v1/supplier/stocks?dateFrom=' + fmt(dateFrom) + '&timezone=Europe/Moscow');
-            if (!Array.isArray(rows)) rows = rows && rows.result ? rows.result : [];
-            rows.forEach(function(r) {
-                var article = r && r.supplierArticle;
-                if (!article || typeof article !== 'string') return;
-                if (!result[article]) result[article] = { quantity: 0, name: article };
-                result[article].quantity += r.quantity || 0;
-            });
+            // Новый API /api/v3/supplier/stocks — текущие остатки по складам с пагинацией
+            var offset = 0;
+            var limit = 1000;
+            while (true) {
+                var resp = await wbApiRequest(account, '/api/v3/supplier/stocks?limit=' + limit + '&offset=' + offset);
+                var rows = (resp && resp.stocks) || [];
+                rows.forEach(function(r) {
+                    var article = r && r.supplierArticle;
+                    if (!article || typeof article !== 'string') return;
+                    if (!result[article]) result[article] = { quantity: 0, name: article };
+                    result[article].quantity += r.quantity || 0;
+                });
+                var total = (resp && resp.total) || 0;
+                offset += rows.length;
+                if (offset >= total || !rows.length) break;
+            }
         } catch (e) {
             wbApiLastError = 'WB («' + account.label + '») — остатки: ' + e.message;
         }
