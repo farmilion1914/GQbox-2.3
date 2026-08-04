@@ -1767,6 +1767,7 @@ async function wbFetchStocks(articles) {
     var result = {}; // article -> { quantity, name }
     if (!articles || !articles.length) return result;
     if (!wbApiProductsCache) wbApiProductsCache = { articles: {} };
+    var apiSucceeded = false;
     for (var i = 0; i < WB_ACCOUNTS.length; i++) {
         var account = WB_ACCOUNTS[i];
         try {
@@ -1786,6 +1787,7 @@ async function wbFetchStocks(articles) {
                     // /api/v3/stocks: поле quantityFull (или amount) — общее количество на складе
                     var qty = r.quantityFull !== undefined ? r.quantityFull : (r.amount !== undefined ? r.amount : (r.quantity || 0));
                     result[article].quantity += qty;
+                    if (r.warehouseName && r.warehouseName.indexOf('Полное') === -1) apiSucceeded = true;
                 });
                 var total = (resp && resp.total) || 0;
                 offset += rows.length;
@@ -1794,6 +1796,15 @@ async function wbFetchStocks(articles) {
         } catch (e) {
             wbApiLastError = 'WB («' + account.label + '») — остатки: ' + e.message;
         }
+    }
+    // Fallback: если API не вернул данные (CORS/недоступен) — используем загруженные остатки WB
+    if (!apiSucceeded && wbStockData && wbStockData.length) {
+        wbStockData.forEach(function(s) {
+            if (!s.article) return;
+            if (!result[s.article]) result[s.article] = { quantity: 0, name: s.name || s.article };
+            result[s.article].quantity += s.balance || 0;
+        });
+        wbApiLastError = null;
     }
     return result;
 }
