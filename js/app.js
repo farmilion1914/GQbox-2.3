@@ -2341,7 +2341,7 @@ function switchPage(page) {
     if (page === 'wb') { var wv = document.getElementById('wbWeekView'); if (wv && wbViewMode === 'week') renderWeekView('Wildberries'); }
     if (page === 'ozon') { var ov = document.getElementById('ozonWeekView'); if (ov && ozonViewMode === 'week') renderWeekView('Ozon'); }
     if (page === 'logistics') { renderLog(); renderLogAnalytics(); }
-    if (page === 'ved') { renderVedCards(); renderVedKpiStrip(); }
+    if (page === 'ved') { renderVedCards(); renderVedKpiStrip(); renderVedLists(); }
 }
 
 function renderAll() {
@@ -2551,6 +2551,8 @@ function initApp() {
         if (t.hasAttribute('data-ms-page')) { var p = t.getAttribute('data-ms-page'); if (p === 'first') msStockPage = 1; else if (p === 'prev') msStockPage = Math.max(1, msStockPage - 1); else if (p === 'next') msStockPage = Math.min(msStockPage + 1, Math.ceil(getFilteredMsStockData().length / msStockPerPage)); else if (p === 'last') msStockPage = Math.ceil(getFilteredMsStockData().length / msStockPerPage); else msStockPage = parseInt(p); renderMsStockTable(); }
         if (t.hasAttribute('data-ved-delete')) { e.stopPropagation(); deleteVedSupply(t.getAttribute('data-ved-delete')); }
         if (t.hasAttribute('data-ved-include')) { e.stopPropagation(); toggleVedIncludeInModel(t.getAttribute('data-ved-include')); }
+        if (t.hasAttribute('data-ved-list-input')) { e.stopPropagation(); return; }
+        if (t.hasAttribute('data-ved-list-index')) { e.preventDefault(); var fi = t.querySelector('input[data-ved-list-input]'); if (fi) fi.click(); return; }
         if (t.hasAttribute('data-ved-list-remove')) { e.stopPropagation(); removeVedList(parseInt(t.getAttribute('data-ved-list-remove'))); }
         if (t.hasAttribute('data-log-paid')) { toggleLogPaid(t.getAttribute('data-log-paid')); }
         if (t.hasAttribute('data-log-delete')) { deleteLogEntry(t.getAttribute('data-log-delete')); }
@@ -2561,6 +2563,12 @@ function initApp() {
     // Global change handler
     document.addEventListener('change', function(e) {
         var t = e.target;
+        if (t.hasAttribute('data-ved-list-input')) { 
+            var idx = parseInt(t.getAttribute('data-ved-list-input'));
+            if (t.files && t.files[0]) handleVedFileForList(idx, t.files[0]);
+            t.value = '';
+            return;
+        }
         if (t.classList.contains('status-select')) { handleStatusChange(e); }
         if (t.hasAttribute('data-ved-status')) { updateVedStatus(t.getAttribute('data-ved-status'), t.value); }
         if (t.hasAttribute('data-log-supplier')) { updateLogSupplier(t.getAttribute('data-log-supplier'), t.value); }
@@ -2574,6 +2582,18 @@ function initApp() {
     document.addEventListener('input', function(e) {
         var t = e.target;
         if (t.hasAttribute('data-sales-month')) { updateSalesPlan(t.getAttribute('data-sales-month'), t.value); }
+    });
+
+    // VED drag & drop
+    document.addEventListener('dragover', function(e) { var box = e.target.closest('.file-upload-box[data-ved-list-index]'); if (box) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; box.style.borderColor = 'var(--accent)'; } });
+    document.addEventListener('dragleave', function(e) { var box = e.target.closest('.file-upload-box[data-ved-list-index]'); if (box) box.style.borderColor = ''; });
+    document.addEventListener('drop', function(e) {
+        var box = e.target.closest('.file-upload-box[data-ved-list-index]');
+        if (!box) return;
+        e.preventDefault();
+        box.style.borderColor = '';
+        var f = e.dataTransfer.files[0];
+        if (f) handleVedFileForList(parseInt(box.getAttribute('data-ved-list-index')), f);
     });
 
     // Initial page
