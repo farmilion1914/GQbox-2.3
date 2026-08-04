@@ -2347,6 +2347,8 @@ function switchPage(page) {
 function renderAll() {
     if (currentPage === 'schedule') { renderKpiStrip(); if (currentSubPage === 'weeks') renderSchedule(); }
     if (currentPage === 'logistics') { renderLog(); renderLogAnalytics(); }
+    if (currentPage === 'wb' && currentWbSubPage === 'shipments') { renderCurrentView('Wildberries'); }
+    if (currentPage === 'ozon' && currentOzonSubPage === 'shipments') { renderCurrentView('Ozon'); }
 }
 
 // ============ INIT APP ============
