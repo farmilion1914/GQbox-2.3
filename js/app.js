@@ -2693,17 +2693,15 @@ function renderTestVedItemsPicker(supplyId) {
     if (!supply) { container.innerHTML = '<div class="test-items-empty">Поставка не найдена</div>'; return; }
     var items = getVedItems(supply);
     if (!items.length) { container.innerHTML = '<div class="test-items-empty">В поставке нет товаров</div>'; return; }
-    // Диагностика — вывод реальной структуры товаров (для отладки)
-    try { console.log('[GQbox DIAG] Товаров в поставке:', items.length); console.log('[GQbox DIAG] Первый товар (сырой):', JSON.stringify(items[0]).slice(0, 400)); } catch(e) {}
     var h = '<div class="test-items-grid">';
     items.forEach(function(it, idx) {
         var article = getVedItemArticle(it);
         var name = getVedItemName(it);
-        var raw = '';
-        try { raw = JSON.stringify(it).slice(0, 250); } catch(e) {}
-        if (!name) name = raw || (article || ('Товар ' + (idx + 1)));
+        if (!article && !name) return; // пропускаем полностью пустые позиции
+        if (!name) name = article;
+        if (!article) article = name;
         name = String(name);
-        h += '<label class="test-item-card" title="' + escapeHtml(raw) + '"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(article || '—') + '</span><span class="test-item-name">' + escapeHtml(name) + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
+        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(article) + '</span><span class="test-item-name">' + escapeHtml(name) + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
     });
     h += '</div>';
     container.innerHTML = h;
