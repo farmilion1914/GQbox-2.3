@@ -309,20 +309,25 @@ h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; color: var(--text-pr
 .btn-status.unpaid { background: #fef7e0; color: #e37400; }
 /* Items picker */
 .test-items-empty { font-size: 12px; color: var(--text-tertiary); padding: 10px 12px; background: var(--input-bg); border-radius: 8px; border: 1px dashed var(--border); }
-.test-items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; max-height: 260px; overflow-y: auto; padding: 4px; }
-.test-item-card { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all .15s; }
+.test-items-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; max-height: 300px; overflow-y: auto; padding: 4px; }
+.test-item-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 10px; transition: all .15s; }
 .test-item-card:hover { border-color: var(--accent); background: var(--surface); box-shadow: var(--shadow-sm); }
-.test-item-card:has(.test-item-checkbox:checked) { border-color: var(--accent); background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(26,115,232,.25); }
-.test-item-checkbox { accent-color: var(--accent); cursor: pointer; margin-top: 2px; flex-shrink: 0; }
-.test-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.test-item-card.selected { border-color: var(--accent); background: var(--accent); box-shadow: 0 2px 8px rgba(26,115,232,.25); }
+.test-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.test-item-checkbox-wrap { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: var(--text-secondary); user-select: none; }
+.test-item-checkbox { accent-color: var(--accent); cursor: pointer; width: 16px; height: 16px; flex-shrink: 0; }
+.test-item-checkbox-label { white-space: nowrap; }
+.test-item-qty { width: 70px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-family: inherit; background: var(--surface); color: var(--text-primary); flex-shrink: 0; text-align: center; }
+.test-item-qty:disabled { opacity: .4; }
+.test-item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .test-item-article { font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--text-primary); word-break: break-word; }
 .test-item-name { font-size: 12px; color: var(--text-secondary); line-height: 1.4; word-break: break-word; }
-.test-item-qty { width: 64px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-family: inherit; background: var(--surface); color: var(--text-primary); flex-shrink: 0; text-align: center; }
-.test-item-qty:disabled { opacity: .4; }
-.test-item-card:has(.test-item-checkbox:checked) .test-item-article { color: #fff; }
-.test-item-card:has(.test-item-checkbox:checked) .test-item-name { color: rgba(255,255,255,.9); }
-.test-item-card:has(.test-item-checkbox:checked) .test-item-qty { background: #fff; border-color: #fff; color: var(--accent); font-weight: 700; }
-.dark-theme .test-item-card:has(.test-item-checkbox:checked) .test-item-qty { background: #fff; color: var(--accent); }
+.test-item-card.selected .test-item-checkbox-label { color: #fff; }
+.test-item-card.selected .test-item-article { color: #fff; }
+.test-item-card.selected .test-item-name { color: rgba(255,255,255,.9); }
+.test-item-card.selected .test-item-qty { background: #fff; border-color: #fff; color: var(--accent); font-weight: 700; }
+.dark-theme .test-item-card.selected { background: var(--accent); }
+.dark-theme .test-item-card.selected .test-item-qty { background: #fff; color: var(--accent); }
 
 /* Materials cards */
 .materials-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
@@ -338,7 +343,6 @@ h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; color: var(--text-pr
 .material-field-label { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; }
 .material-field-value { font-size: 12px; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
 .material-extra { margin-top: 10px; font-size: 11px; line-height: 1.5; color: var(--text-secondary); background: var(--input-bg); padding: 8px 10px; border-radius: 8px; border-left: 3px solid var(--accent); }
-.dark-theme .test-item-card:has(.test-item-checkbox:checked) { background: var(--accent); }
 .dark-theme .btn-status.paid { background: #1e3d2e; color: #34a853; }
 .dark-theme .btn-status.unpaid { background: #3d3520; color: #fdd663; }
 .btn-confirm-edit { background: var(--success); color: #fff; border: none; font-weight: 700; cursor: pointer; transition: all .15s; }

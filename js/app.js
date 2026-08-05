@@ -2701,15 +2701,26 @@ function renderTestVedItemsPicker(supplyId) {
         if (!name) name = article;
         if (!article) article = name;
         name = String(name);
-        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(article) + '</span><span class="test-item-name">' + escapeHtml(name) + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
+        h += '<div class="test-item-card" data-test-item-idx="' + idx + '">';
+        h += '<div class="test-item-top">';
+        h += '<label class="test-item-checkbox-wrap"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-checkbox-label">Выбрать</span></label>';
+        h += '<input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled title="Количество">';
+        h += '</div>';
+        h += '<div class="test-item-info">';
+        h += '<div class="test-item-article">' + escapeHtml(article) + '</div>';
+        h += '<div class="test-item-name">' + escapeHtml(name) + '</div>';
+        h += '</div>';
+        h += '</div>';
     });
     h += '</div>';
     container.innerHTML = h;
-    // Включаем поле количества при выборе товара
+    // Включаем поле количества при выборе товара + подсветка карточки
     container.querySelectorAll('.test-item-checkbox').forEach(function(cb) {
         cb.addEventListener('change', function() {
-            var qtyInput = this.closest('.test-item-card').querySelector('.test-item-qty');
+            var card = this.closest('.test-item-card');
+            var qtyInput = card.querySelector('.test-item-qty');
             if (qtyInput) qtyInput.disabled = !this.checked;
+            if (card) card.classList.toggle('selected', this.checked);
             // Если выбран ровно один товар — подставляем его артикул
             var checked = container.querySelectorAll('.test-item-checkbox:checked');
             var articleEl = document.getElementById('testArticle');
