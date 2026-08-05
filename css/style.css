@@ -316,9 +316,9 @@ h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; color: var(--text-pr
 .test-item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .test-item-article { font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--text-primary); word-break: break-word; }
 .test-item-name { font-size: 12px; color: var(--text-secondary); line-height: 1.4; word-break: break-word; }
-.test-item-qty-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; padding-top: 8px; border-top: 1px dashed var(--border); }
-.test-item-qty-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
-.test-item-qty { width: 80px; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; font-family: inherit; background: var(--surface); color: var(--accent); font-weight: 700; flex-shrink: 0; text-align: center; }
+.test-item-qty-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; padding-top: 8px; border-top: 1px dashed var(--border); width: 100%; min-width: 0; }
+.test-item-qty-label { font-size: 11px; color: var(--text-secondary); white-space: nowrap; flex-shrink: 0; }
+.test-item-qty { flex: 1; min-width: 0; max-width: 100%; padding: 5px 8px; border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; font-family: inherit; background: var(--surface); color: var(--accent); font-weight: 700; text-align: center; }
 .test-item-card.selected .test-item-article { color: var(--accent); }
 .test-item-card.selected .test-item-name { color: var(--text-primary); }
 .dark-theme .test-item-card.selected { background: #1e2e3d; }
