@@ -53,7 +53,7 @@
         <button type="button" class="nav-btn" data-page="logistics">Логистика</button>
         <button type="button" class="nav-btn" data-page="ved">ВЭД</button>
         <button type="button" class="nav-btn" data-page="orders">📦 Заказы</button>
-        <button type="button" class="nav-btn" data-page="testing">🧪 Тестировка</button>
+        <button type="button" class="nav-btn" data-page="testing">Тестировка</button>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -504,21 +504,23 @@
             <div class="form-card">
                 <div class="form-row">
                     <div class="field"><label>Поставка ВЭД</label><select id="testVedSupply"><option value="">— Выберите поставку —</option></select></div>
-                    <div class="field"><label>Товар из поставки</label><select id="testVedItem"><option value="">— Выберите товар —</option></select></div>
                     <div class="field"><label>Артикул</label><input type="text" id="testArticle" placeholder="Например: S10002E/01" list="testArticleList"></div>
                     <datalist id="testArticleList"></datalist>
                 </div>
                 <div class="form-row" style="margin-top:10px">
+                    <div class="field"><label>Товары из поставки (выберите несколько)</label><div class="test-items-picker" id="testVedItems"></div></div>
+                </div>
+                <div class="form-row" style="margin-top:10px">
                     <div class="field"><label>Дата теста</label><input type="date" id="testDate"></div>
-                    <div class="field"><label>Результат</label><select id="testResult"><option value="ok">✅ ОК</option><option value="defect">❌ Брак</option><option value="pending">⏳ В процессе</option></select></div>
+                    <div class="field"><label>Результат</label><select id="testResult"><option value="ok">ОК</option><option value="defect">Брак</option><option value="pending">В процессе</option></select></div>
                     <div class="field"><label>Кто тестировал</label><input type="text" id="testTester" placeholder="Имя"></div>
                     <div class="field"><label>Комментарий</label><input type="text" id="testComment" placeholder="Описание результата теста"></div>
                     <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment log" id="btnAddTest">+ Добавить тест</button></div>
                 </div>
             </div>
             <div class="filters">
-                <input type="text" id="testSearch" placeholder="🔍 Поиск по артикулу...">
-                <select id="testResultFilter"><option value="all">Все результаты</option><option value="ok">✅ ОК</option><option value="defect">❌ Брак</option><option value="pending">⏳ В процессе</option></select>
+                <input type="text" id="testSearch" placeholder="Поиск по артикулу...">
+                <select id="testResultFilter"><option value="all">Все результаты</option><option value="ok">ОК</option><option value="defect">Брак</option><option value="pending">В процессе</option></select>
                 <button type="button" class="chip" id="btnResetTestFilters">Сброс</button>
             </div>
             <div class="table-wrap" id="testingTable"><div class="empty-state">Нет тестов</div></div>
@@ -531,7 +533,7 @@
                 <span style="font-size:12px;color:var(--text-secondary);" id="materialsLastUpdate">Не загружено</span>
             </div>
             <div class="filters">
-                <input type="text" id="materialSearch" placeholder="🔍 Поиск по артикулу или названию...">
+                <input type="text" id="materialSearch" placeholder="Поиск по артикулу или названию...">
                 <button type="button" class="chip" id="btnResetMaterialFilters">Сброс</button>
             </div>
             <div class="table-wrap" id="materialsTable"><div class="empty-state">Нажмите «Загрузить из Google таблицы»</div></div>

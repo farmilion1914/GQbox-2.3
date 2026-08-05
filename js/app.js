@@ -2497,7 +2497,7 @@ function renderTestingKpiStrip() {
     var ok = testingRecords.filter(function(t) { return t.result === 'ok'; }).length;
     var defect = testingRecords.filter(function(t) { return t.result === 'defect'; }).length;
     var pending = testingRecords.filter(function(t) { return t.result === 'pending'; }).length;
-    strip.innerHTML = '<div class="kpi-item"><span class="kpi-item-label">Всего тестов:</span><span class="kpi-item-value">' + total + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">✅ ОК:</span><span class="kpi-item-value" style="color:var(--success);">' + ok + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">❌ Брак:</span><span class="kpi-item-value" style="color:var(--danger);">' + defect + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">⏳ В процессе:</span><span class="kpi-item-value" style="color:var(--warning);">' + pending + '</span></div>';
+    strip.innerHTML = '<div class="kpi-item"><span class="kpi-item-label">Всего тестов:</span><span class="kpi-item-value">' + total + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">ОК:</span><span class="kpi-item-value" style="color:var(--success);">' + ok + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">Брак:</span><span class="kpi-item-value" style="color:var(--danger);">' + defect + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">В процессе:</span><span class="kpi-item-value" style="color:var(--warning);">' + pending + '</span></div>';
 }
 
 function renderTestingTable() {
@@ -2509,7 +2509,7 @@ function renderTestingTable() {
     if (testResultFilter !== 'all') filtered = filtered.filter(function(t) { return t.result === testResultFilter; });
     filtered.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     if (!filtered.length) { table.innerHTML = '<div class="empty-state">Нет тестов</div>'; return; }
-    var resultLabels = { ok: '<span class="priority-badge priority-planned">✅ ОК</span>', defect: '<span class="priority-badge priority-urgent">❌ Брак</span>', pending: '<span class="priority-badge priority-normal">⏳ В процессе</span>' };
+    var resultLabels = { ok: '<span class="priority-badge priority-planned">ОК</span>', defect: '<span class="priority-badge priority-urgent">Брак</span>', pending: '<span class="priority-badge priority-normal">В процессе</span>' };
     var h = '<table><thead><tr><th>Артикул</th><th>Поставка ВЭД</th><th>Дата</th><th>Результат</th><th>Кто тестировал</th><th>Комментарий</th><th></th></tr></thead><tbody>';
     filtered.forEach(function(t) {
         var vedLabel = t.vedSupplyNumber ? escapeHtml(t.vedSupplyNumber) : '—';
@@ -2539,57 +2539,70 @@ function populateTestVedSupplies() {
     sel.innerHTML = h;
     sel.value = current;
     // Обновляем список товаров, если поставка уже выбрана
-    if (current) populateTestVedItems(current);
+    if (current) renderTestVedItemsPicker(current);
 }
 
-// Заполнение селекта товаров выбранной поставки
-function populateTestVedItems(supplyId) {
-    var itemSel = document.getElementById('testVedItem');
-    if (!itemSel) return;
+// Отображение товаров выбранной поставки с чекбоксами и количеством
+function renderTestVedItemsPicker(supplyId) {
+    var container = document.getElementById('testVedItems');
+    if (!container) return;
+    if (!supplyId) { container.innerHTML = '<div class="test-items-empty">Сначала выберите поставку</div>'; return; }
     var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
-    var h = '<option value="">— Выберите товар —</option>';
-    if (supply && supply.items) {
-        supply.items.forEach(function(it, idx) {
-            var label = (it.article || '—') + ' · ' + (it.name || '').slice(0, 40);
-            h += '<option value="' + idx + '">' + escapeHtml(label) + '</option>';
+    if (!supply || !supply.items || !supply.items.length) { container.innerHTML = '<div class="test-items-empty">В поставке нет товаров</div>'; return; }
+    var h = '<div class="test-items-grid">';
+    supply.items.forEach(function(it, idx) {
+        var name = (it.name || '').slice(0, 50);
+        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(it.article || '') + '" data-test-item-name="' + escapeHtml(name || '') + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(it.article || '—') + '</span><span class="test-item-name">' + escapeHtml(name || '—') + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
+    });
+    h += '</div>';
+    container.innerHTML = h;
+    // Включаем поле количества при выборе товара
+    container.querySelectorAll('.test-item-checkbox').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            var qtyInput = this.closest('.test-item-card').querySelector('.test-item-qty');
+            if (qtyInput) qtyInput.disabled = !this.checked;
+            // Если выбран ровно один товар — подставляем его артикул
+            var checked = container.querySelectorAll('.test-item-checkbox:checked');
+            var articleEl = document.getElementById('testArticle');
+            if (articleEl) {
+                if (checked.length === 1) articleEl.value = checked[0].dataset.testItemArticle || '';
+                else if (checked.length === 0) articleEl.value = '';
+                else articleEl.value = '';
+            }
         });
-    }
-    itemSel.innerHTML = h;
+    });
 }
 
-// Подстановка артикула при выборе товара из поставки
-function onTestVedItemChange() {
-    var supplySel = document.getElementById('testVedSupply');
-    var itemSel = document.getElementById('testVedItem');
-    var articleEl = document.getElementById('testArticle');
-    if (!supplySel || !itemSel || !articleEl) return;
-    var supplyId = supplySel.value;
-    var idx = itemSel.value;
-    if (!supplyId || idx === '') return;
-    var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
-    if (supply && supply.items && supply.items[idx]) {
-        articleEl.value = supply.items[idx].article || '';
-    }
+// Обработчик смены поставки
+function onTestVedSupplyChange(supplyId) {
+    renderTestVedItemsPicker(supplyId);
 }
 
 function addTestRecord() {
     var ae = document.getElementById('testArticle'), de = document.getElementById('testDate'), re = document.getElementById('testResult'), te = document.getElementById('testTester'), ce = document.getElementById('testComment');
-    var supplySel = document.getElementById('testVedSupply'), itemSel = document.getElementById('testVedItem');
+    var supplySel = document.getElementById('testVedSupply');
     if (!ae || !de) return;
     var article = ae.value.trim(), date = de.value, result = re ? re.value : 'ok', tester = te ? te.value.trim() : '', comment = ce ? ce.value.trim() : '';
-    if (!article || !date) { showToast('Заполните артикул и дату'); return; }
+    if (!date) { showToast('Заполните дату теста'); return; }
     var supplyId = supplySel ? supplySel.value : '';
     var supplyNumber = '';
-    var itemName = '';
+    var selectedItems = [];
     if (supplyId) {
         var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
         if (supply) {
             supplyNumber = supply.number || '';
-            var idx = itemSel ? itemSel.value : '';
-            if (idx !== '' && supply.items && supply.items[idx]) itemName = supply.items[idx].name || '';
+            document.querySelectorAll('#testVedItems .test-item-checkbox:checked').forEach(function(cb) {
+                var idx = parseInt(cb.dataset.testItemIdx);
+                var qtyInput = cb.closest('.test-item-card').querySelector('.test-item-qty');
+                var qty = qtyInput ? parseInt(qtyInput.value) || 1 : 1;
+                var item = (supply.items && supply.items[idx]) || {};
+                selectedItems.push({ index: idx, article: item.article || cb.dataset.testItemArticle || '', name: item.name || cb.dataset.testItemName || '', qty: qty });
+            });
         }
     }
-    var rec = { id: generateUniqueId(), article: article, date: date, result: result, tester: tester, comment: comment, vedSupplyId: supplyId, vedSupplyNumber: supplyNumber, itemName: itemName, createdAt: new Date().toISOString() };
+    if (!article && selectedItems.length === 0) { showToast('Выберите товар из поставки или укажите артикул'); return; }
+    if (selectedItems.length > 0 && !article) article = selectedItems[0].article;
+    var rec = { id: generateUniqueId(), article: article, date: date, result: result, tester: tester, comment: comment, vedSupplyId: supplyId, vedSupplyNumber: supplyNumber, items: selectedItems, itemCount: selectedItems.reduce(function(s, it) { return s + it.qty; }, 0), createdAt: new Date().toISOString() };
     testingRecords.push(rec);
     saveTestingToLocalStorage();
     if (isOnline) { try { db.collection('settings').doc('testingRecords').set({ items: testingRecords }, { merge: true }); } catch(e) {} }
@@ -2597,9 +2610,10 @@ function addTestRecord() {
     if (te) te.value = '';
     if (ce) ce.value = '';
     if (supplySel) supplySel.value = '';
-    if (itemSel) itemSel.innerHTML = '<option value="">— Выберите товар —</option>';
+    var itemsContainer = document.getElementById('testVedItems');
+    if (itemsContainer) itemsContainer.innerHTML = '<div class="test-items-empty">Сначала выберите поставку</div>';
     renderTesting();
-    showToast('Тест добавлен');
+    showToast('Тест добавлен: ' + (rec.itemCount || 1) + ' ед.');
 }
 
 function deleteTestRecord(id) {
@@ -2666,11 +2680,48 @@ function renderMaterials() {
         return article.toLowerCase().includes(q) || name.toLowerCase().includes(q);
     });
     if (!filtered.length) { table.innerHTML = '<div class="empty-state">Ничего не найдено</div>'; return; }
-    var h = '<table><thead><tr><th>Артикул</th><th>Наименование</th><th>Категория</th><th>Модель</th><th>Материал корпуса</th><th>Материал провода</th><th>Сила тока, А</th><th>Напряжение, V</th><th>Мощность, W</th><th>Длина, м</th><th>Передача, Мб/с</th><th>Устройств</th><th>Разъем мама</th><th>Разъем папа</th><th>Протокол</th><th>Тип подключения</th><th>Цвет</th><th>Поставщик</th><th>Модель ВЭД</th><th>Характеристики</th></tr></thead><tbody>';
+    var h = '<div class="materials-grid">';
     filtered.forEach(function(m) {
-        h += '<tr><td><code>' + escapeHtml(m['Артикул сырья'] || m['Артикул'] || '—') + '</code></td><td>' + escapeHtml(m['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'] || m['Наименование'] || '—') + '</td><td>' + escapeHtml(m['Категория'] || '—') + '</td><td>' + escapeHtml(m['Модель'] || '—') + '</td><td>' + escapeHtml(m['Материал корпуса'] || '—') + '</td><td>' + escapeHtml(m['Материал провода'] || '—') + '</td><td class="num">' + escapeHtml(m['Сила тока, А'] || '—') + '</td><td class="num">' + escapeHtml(m['Выходное напряжение, V'] || '—') + '</td><td class="num">' + escapeHtml(m['Мощность, W'] || '—') + '</td><td class="num">' + escapeHtml(m['Длина, м'] || '—') + '</td><td class="num">' + escapeHtml(m['Передача данных, Мб/с'] || '—') + '</td><td class="num">' + escapeHtml(m['Количество подключаемых устройств'] || '—') + '</td><td>' + escapeHtml(m['Разъем мама'] || '—') + '</td><td>' + escapeHtml(m['Разъем папа'] || '—') + '</td><td>' + escapeHtml(m['Протокол зарядки'] || '—') + '</td><td>' + escapeHtml(m['Тип подключения'] || '—') + '</td><td>' + escapeHtml(m['Цвет'] || '—') + '</td><td>' + escapeHtml(m['Поставщик'] || '—') + '</td><td>' + escapeHtml(m['Модель ВЭД'] || '—') + '</td><td>' + escapeHtml(m['Характеристики'] || '—') + '</td></tr>';
+        var article = m['Артикул сырья'] || m['Артикул'] || '—';
+        var name = m['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'] || m['Наименование'] || '—';
+        var category = m['Категория'] || '';
+        var model = m['Модель'] || '';
+        var supplier = m['Поставщик'] || '';
+        var vedModel = m['Модель ВЭД'] || '';
+        var fields = [
+            { label: 'Материал корпуса', value: m['Материал корпуса'] },
+            { label: 'Материал провода', value: m['Материал провода'] },
+            { label: 'Сила тока, А', value: m['Сила тока, А'], num: true },
+            { label: 'Напряжение, V', value: m['Выходное напряжение, V'], num: true },
+            { label: 'Мощность, W', value: m['Мощность, W'], num: true },
+            { label: 'Длина, м', value: m['Длина, м'], num: true },
+            { label: 'Передача, Мб/с', value: m['Передача данных, Мб/с'], num: true },
+            { label: 'Устройств', value: m['Количество подключаемых устройств'], num: true },
+            { label: 'Разъем мама', value: m['Разъем мама'] },
+            { label: 'Разъем папа', value: m['Разъем папа'] },
+            { label: 'Протокол', value: m['Протокол зарядки'] },
+            { label: 'Тип подключения', value: m['Тип подключения'] },
+            { label: 'Цвет', value: m['Цвет'] }
+        ];
+        var hasFields = fields.some(function(f) { return f.value; });
+        h += '<div class="material-card"><div class="material-card-header"><div class="material-article"><code>' + escapeHtml(article) + '</code></div><div class="material-name">' + escapeHtml(name) + '</div></div><div class="material-tags">';
+        if (category) h += '<span class="material-tag">' + escapeHtml(category) + '</span>';
+        if (model) h += '<span class="material-tag">' + escapeHtml(model) + '</span>';
+        if (supplier) h += '<span class="material-tag">' + escapeHtml(supplier) + '</span>';
+        if (vedModel) h += '<span class="material-tag">' + escapeHtml(vedModel) + '</span>';
+        h += '</div>';
+        if (hasFields) {
+            h += '<div class="material-fields">';
+            fields.forEach(function(f) {
+                if (f.value) h += '<div class="material-field"><span class="material-field-label">' + escapeHtml(f.label) + '</span><span class="material-field-value">' + escapeHtml(f.value) + '</span></div>';
+            });
+            h += '</div>';
+        }
+        var extra = m['Характеристики'];
+        if (extra) h += '<div class="material-extra">' + escapeHtml(extra) + '</div>';
+        h += '</div>';
     });
-    h += '</tbody></table>';
+    h += '</div>';
     table.innerHTML = h;
 }
 
@@ -2728,8 +2779,7 @@ function initApp() {
     // Тестировка
     document.getElementById('btnAddTest').addEventListener('click', addTestRecord);
     document.getElementById('btnLoadMaterials').addEventListener('click', loadMaterialsFromGoogle);
-    document.getElementById('testVedSupply').addEventListener('change', function() { populateTestVedItems(this.value); });
-    document.getElementById('testVedItem').addEventListener('change', onTestVedItemChange);
+    document.getElementById('testVedSupply').addEventListener('change', function() { onTestVedSupplyChange(this.value); });
     document.getElementById('testSearch').addEventListener('input', function() { testSearchQuery = this.value; renderTesting(); });
     document.getElementById('testResultFilter').addEventListener('change', function() { testResultFilter = this.value; renderTesting(); });
     document.getElementById('btnResetTestFilters').addEventListener('click', resetTestFilters);
