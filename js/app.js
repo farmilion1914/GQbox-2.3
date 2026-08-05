@@ -2510,9 +2510,10 @@ function renderTestingTable() {
     filtered.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     if (!filtered.length) { table.innerHTML = '<div class="empty-state">Нет тестов</div>'; return; }
     var resultLabels = { ok: '<span class="priority-badge priority-planned">✅ ОК</span>', defect: '<span class="priority-badge priority-urgent">❌ Брак</span>', pending: '<span class="priority-badge priority-normal">⏳ В процессе</span>' };
-    var h = '<table><thead><tr><th>Артикул</th><th>Дата</th><th>Результат</th><th>Кто тестировал</th><th>Комментарий</th><th></th></tr></thead><tbody>';
+    var h = '<table><thead><tr><th>Артикул</th><th>Поставка ВЭД</th><th>Дата</th><th>Результат</th><th>Кто тестировал</th><th>Комментарий</th><th></th></tr></thead><tbody>';
     filtered.forEach(function(t) {
-        h += '<tr><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
+        var vedLabel = t.vedSupplyNumber ? escapeHtml(t.vedSupplyNumber) : '—';
+        h += '<tr><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + vedLabel + '</td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
     });
     h += '</tbody></table>';
     table.innerHTML = h;
@@ -2521,20 +2522,82 @@ function renderTestingTable() {
 function renderTesting() {
     renderTestingKpiStrip();
     renderTestingTable();
+    populateTestVedSupplies();
+}
+
+// Заполнение селекта поставок ВЭД для тестировки
+function populateTestVedSupplies() {
+    var sel = document.getElementById('testVedSupply');
+    if (!sel) return;
+    var current = sel.value;
+    var supplies = vedSupplies.slice().sort(function(a, b) { return (b.eta || '').localeCompare(a.eta || ''); });
+    var h = '<option value="">— Выберите поставку —</option>';
+    supplies.forEach(function(s) {
+        var items = (s.items || []).length;
+        h += '<option value="' + escapeHtml(s.id) + '">' + escapeHtml(s.number || s.id) + ' · ' + escapeHtml(s.supplier || '') + ' · ' + items + ' поз.</option>';
+    });
+    sel.innerHTML = h;
+    sel.value = current;
+    // Обновляем список товаров, если поставка уже выбрана
+    if (current) populateTestVedItems(current);
+}
+
+// Заполнение селекта товаров выбранной поставки
+function populateTestVedItems(supplyId) {
+    var itemSel = document.getElementById('testVedItem');
+    if (!itemSel) return;
+    var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
+    var h = '<option value="">— Выберите товар —</option>';
+    if (supply && supply.items) {
+        supply.items.forEach(function(it, idx) {
+            var label = (it.article || '—') + ' · ' + (it.name || '').slice(0, 40);
+            h += '<option value="' + idx + '">' + escapeHtml(label) + '</option>';
+        });
+    }
+    itemSel.innerHTML = h;
+}
+
+// Подстановка артикула при выборе товара из поставки
+function onTestVedItemChange() {
+    var supplySel = document.getElementById('testVedSupply');
+    var itemSel = document.getElementById('testVedItem');
+    var articleEl = document.getElementById('testArticle');
+    if (!supplySel || !itemSel || !articleEl) return;
+    var supplyId = supplySel.value;
+    var idx = itemSel.value;
+    if (!supplyId || idx === '') return;
+    var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
+    if (supply && supply.items && supply.items[idx]) {
+        articleEl.value = supply.items[idx].article || '';
+    }
 }
 
 function addTestRecord() {
     var ae = document.getElementById('testArticle'), de = document.getElementById('testDate'), re = document.getElementById('testResult'), te = document.getElementById('testTester'), ce = document.getElementById('testComment');
+    var supplySel = document.getElementById('testVedSupply'), itemSel = document.getElementById('testVedItem');
     if (!ae || !de) return;
     var article = ae.value.trim(), date = de.value, result = re ? re.value : 'ok', tester = te ? te.value.trim() : '', comment = ce ? ce.value.trim() : '';
     if (!article || !date) { showToast('Заполните артикул и дату'); return; }
-    var rec = { id: generateUniqueId(), article: article, date: date, result: result, tester: tester, comment: comment, createdAt: new Date().toISOString() };
+    var supplyId = supplySel ? supplySel.value : '';
+    var supplyNumber = '';
+    var itemName = '';
+    if (supplyId) {
+        var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
+        if (supply) {
+            supplyNumber = supply.number || '';
+            var idx = itemSel ? itemSel.value : '';
+            if (idx !== '' && supply.items && supply.items[idx]) itemName = supply.items[idx].name || '';
+        }
+    }
+    var rec = { id: generateUniqueId(), article: article, date: date, result: result, tester: tester, comment: comment, vedSupplyId: supplyId, vedSupplyNumber: supplyNumber, itemName: itemName, createdAt: new Date().toISOString() };
     testingRecords.push(rec);
     saveTestingToLocalStorage();
     if (isOnline) { try { db.collection('settings').doc('testingRecords').set({ items: testingRecords }, { merge: true }); } catch(e) {} }
     if (ae) ae.value = '';
     if (te) te.value = '';
     if (ce) ce.value = '';
+    if (supplySel) supplySel.value = '';
+    if (itemSel) itemSel.innerHTML = '<option value="">— Выберите товар —</option>';
     renderTesting();
     showToast('Тест добавлен');
 }
@@ -2665,6 +2728,8 @@ function initApp() {
     // Тестировка
     document.getElementById('btnAddTest').addEventListener('click', addTestRecord);
     document.getElementById('btnLoadMaterials').addEventListener('click', loadMaterialsFromGoogle);
+    document.getElementById('testVedSupply').addEventListener('change', function() { populateTestVedItems(this.value); });
+    document.getElementById('testVedItem').addEventListener('change', onTestVedItemChange);
     document.getElementById('testSearch').addEventListener('input', function() { testSearchQuery = this.value; renderTesting(); });
     document.getElementById('testResultFilter').addEventListener('change', function() { testResultFilter = this.value; renderTesting(); });
     document.getElementById('btnResetTestFilters').addEventListener('click', resetTestFilters);

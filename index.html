@@ -503,14 +503,16 @@
             <div class="kpi-strip" id="testingKpiStrip"></div>
             <div class="form-card">
                 <div class="form-row">
+                    <div class="field"><label>Поставка ВЭД</label><select id="testVedSupply"><option value="">— Выберите поставку —</option></select></div>
+                    <div class="field"><label>Товар из поставки</label><select id="testVedItem"><option value="">— Выберите товар —</option></select></div>
                     <div class="field"><label>Артикул</label><input type="text" id="testArticle" placeholder="Например: S10002E/01" list="testArticleList"></div>
                     <datalist id="testArticleList"></datalist>
+                </div>
+                <div class="form-row" style="margin-top:10px">
                     <div class="field"><label>Дата теста</label><input type="date" id="testDate"></div>
                     <div class="field"><label>Результат</label><select id="testResult"><option value="ok">✅ ОК</option><option value="defect">❌ Брак</option><option value="pending">⏳ В процессе</option></select></div>
                     <div class="field"><label>Кто тестировал</label><input type="text" id="testTester" placeholder="Имя"></div>
-                </div>
-                <div class="form-row" style="margin-top:10px">
-                    <div class="field" style="flex:2"><label>Комментарий</label><input type="text" id="testComment" placeholder="Описание результата теста"></div>
+                    <div class="field"><label>Комментарий</label><input type="text" id="testComment" placeholder="Описание результата теста"></div>
                     <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment log" id="btnAddTest">+ Добавить тест</button></div>
                 </div>
             </div>
