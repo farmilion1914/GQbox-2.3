@@ -2542,17 +2542,101 @@ function populateTestVedSupplies() {
     if (current) renderTestVedItemsPicker(current);
 }
 
+// Получение массива товаров поставки (поддержка разных структур данных)
+function getVedItems(supply) {
+    if (!supply) return [];
+    var candidates = [supply.items, supply.products, supply.goods, supply.positions];
+    for (var i = 0; i < candidates.length; i++) {
+        if (Array.isArray(candidates[i]) && candidates[i].length > 0) return candidates[i];
+    }
+    return [];
+}
+
+// Нормализация полей товара ВЭД (поддержка объектов, массивов и разных языков)
+function getVedItemArticle(it) {
+    if (it == null) return '';
+    if (typeof it === 'string' || typeof it === 'number') { var s = String(it); if (/^\d{1,2}$/.test(s)) return ''; return s; }
+    if (Array.isArray(it)) {
+        // Массив вида [артикул, название, ...]
+        for (var i = 0; i < Math.min(it.length, 4); i++) {
+            if (it[i] == null) continue;
+            var s = String(it[i]).trim();
+            if (s && !/^\d{1,2}$/.test(s) && s.includes('-') && s.length <= 30) return s;
+        }
+        // Ищем любой нечисловой текст (может быть артикулом)
+        for (var i = 0; i < Math.min(it.length, 6); i++) {
+            if (it[i] == null) continue;
+            var s = String(it[i]).trim();
+            if (s && !/^\d+$/.test(s) && s.length >= 3 && s.length <= 30 && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
+        }
+        return '';
+    }
+    var candidates = [it.article, it.art, it.sku, it.code, it['Артикул'], it['Артикул сырья'], it['Модель'], it.model];
+    for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i] == null) continue;
+        var s = String(candidates[i]).trim();
+        if (s && !/^\d{1,2}$/.test(s) && s !== 'N/A' && s !== '—') return s;
+    }
+    return '';
+}
+function getVedItemName(it) {
+    if (it == null) return '';
+    if (typeof it === 'string' || typeof it === 'number') return '';
+    if (Array.isArray(it)) {
+        // Массив вида [артикул, название, ...]
+        for (var i = 1; i < Math.min(it.length, 6); i++) {
+            if (it[i] == null) continue;
+            var s = String(it[i]).trim();
+            if (s && !/^\d+$/.test(s) && s.length > 3 && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
+        }
+        return '';
+    }
+    var candidates = [it.name, it.title, it['Наименование'], it['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'], it['Название'], it.description, it.desc, it['Описание']];
+    for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i] == null) continue;
+        var s = String(candidates[i]).trim();
+        if (s && s !== 'N/A' && s !== '—') return s;
+    }
+    // Если имя не найдено — используем артикул как имя
+    var article = getVedItemArticle(it);
+    if (article) return article;
+    return '';
+}
+function getVedItemQty(it) {
+    if (it == null) return 1;
+    if (typeof it === 'number') return it > 0 ? it : 1;
+    var candidates = [it.qty, it.quantity, it.count, it['Количество'], it['Кол-во'], it['Всего']];
+    if (Array.isArray(it)) {
+        for (var i = 2; i < Math.min(it.length, 6); i++) {
+            if (typeof it[i] === 'number' && it[i] > 0 && it[i] < 1000000) return it[i];
+        }
+    } else {
+        for (var i = 0; i < candidates.length; i++) {
+            var v = candidates[i];
+            if (v === undefined || v === null) continue;
+            var num = parseInt(typeof v === 'number' ? v : String(v).replace(/\s/g, ''), 10);
+            if (!isNaN(num) && num > 0) return num;
+        }
+    }
+    return 1;
+}
+
 // Отображение товаров выбранной поставки с чекбоксами и количеством
 function renderTestVedItemsPicker(supplyId) {
     var container = document.getElementById('testVedItems');
     if (!container) return;
     if (!supplyId) { container.innerHTML = '<div class="test-items-empty">Сначала выберите поставку</div>'; return; }
     var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
-    if (!supply || !supply.items || !supply.items.length) { container.innerHTML = '<div class="test-items-empty">В поставке нет товаров</div>'; return; }
+    if (!supply) { container.innerHTML = '<div class="test-items-empty">Поставка не найдена</div>'; return; }
+    var items = getVedItems(supply);
+    if (!items.length) { container.innerHTML = '<div class="test-items-empty">В поставке нет товаров</div>'; return; }
     var h = '<div class="test-items-grid">';
-    supply.items.forEach(function(it, idx) {
-        var name = (it.name || '').slice(0, 50);
-        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(it.article || '') + '" data-test-item-name="' + escapeHtml(name || '') + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(it.article || '—') + '</span><span class="test-item-name">' + escapeHtml(name || '—') + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
+    items.forEach(function(it, idx) {
+        var article = getVedItemArticle(it);
+        var name = getVedItemName(it);
+        if (!name && article) name = article;
+        name = String(name).slice(0, 50);
+        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(article || '—') + '</span><span class="test-item-name">' + escapeHtml(name || '—') + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
     });
     h += '</div>';
     container.innerHTML = h;
@@ -2591,12 +2675,13 @@ function addTestRecord() {
         var supply = vedSupplies.find(function(s) { return String(s.id) === String(supplyId); });
         if (supply) {
             supplyNumber = supply.number || '';
+            var vedItems = getVedItems(supply);
             document.querySelectorAll('#testVedItems .test-item-checkbox:checked').forEach(function(cb) {
                 var idx = parseInt(cb.dataset.testItemIdx);
                 var qtyInput = cb.closest('.test-item-card').querySelector('.test-item-qty');
                 var qty = qtyInput ? parseInt(qtyInput.value) || 1 : 1;
-                var item = (supply.items && supply.items[idx]) || {};
-                selectedItems.push({ index: idx, article: item.article || cb.dataset.testItemArticle || '', name: item.name || cb.dataset.testItemName || '', qty: qty });
+                var item = (vedItems && vedItems[idx]) || {};
+                selectedItems.push({ index: idx, article: getVedItemArticle(item) || cb.dataset.testItemArticle || '', name: getVedItemName(item) || cb.dataset.testItemName || '', qty: qty });
             });
         }
     }
