@@ -2701,32 +2701,32 @@ function renderTestVedItemsPicker(supplyId) {
         if (!name) name = article;
         if (!article) article = name;
         name = String(name);
-        h += '<div class="test-item-card" data-test-item-idx="' + idx + '">';
-        h += '<div class="test-item-top">';
-        h += '<label class="test-item-checkbox-wrap"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-checkbox-label">Выбрать</span></label>';
-        h += '<input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled title="Количество">';
-        h += '</div>';
+        h += '<div class="test-item-card" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '">';
         h += '<div class="test-item-info">';
         h += '<div class="test-item-article">' + escapeHtml(article) + '</div>';
         h += '<div class="test-item-name">' + escapeHtml(name) + '</div>';
+        h += '</div>';
+        h += '<div class="test-item-qty-row" style="display:none">';
+        h += '<label class="test-item-qty-label">Количество:</label>';
+        h += '<input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" title="Количество">';
         h += '</div>';
         h += '</div>';
     });
     h += '</div>';
     container.innerHTML = h;
-    // Включаем поле количества при выборе товара + подсветка карточки
-    container.querySelectorAll('.test-item-checkbox').forEach(function(cb) {
-        cb.addEventListener('change', function() {
-            var card = this.closest('.test-item-card');
-            var qtyInput = card.querySelector('.test-item-qty');
-            if (qtyInput) qtyInput.disabled = !this.checked;
-            if (card) card.classList.toggle('selected', this.checked);
+    // Клик по карточке — выбор/снятие выбора, показ поля количества
+    container.querySelectorAll('.test-item-card').forEach(function(card) {
+        card.addEventListener('click', function(e) {
+            // Клик по полю количества не должен снимать выбор
+            if (e.target.classList.contains('test-item-qty')) return;
+            var isSelected = card.classList.toggle('selected');
+            var qtyRow = card.querySelector('.test-item-qty-row');
+            if (qtyRow) qtyRow.style.display = isSelected ? 'flex' : 'none';
             // Если выбран ровно один товар — подставляем его артикул
-            var checked = container.querySelectorAll('.test-item-checkbox:checked');
+            var selected = container.querySelectorAll('.test-item-card.selected');
             var articleEl = document.getElementById('testArticle');
             if (articleEl) {
-                if (checked.length === 1) articleEl.value = checked[0].dataset.testItemArticle || '';
-                else if (checked.length === 0) articleEl.value = '';
+                if (selected.length === 1) articleEl.value = selected[0].dataset.testItemArticle || '';
                 else articleEl.value = '';
             }
         });
@@ -2752,12 +2752,12 @@ function addTestRecord() {
         if (supply) {
             supplyNumber = supply.number || '';
             var vedItems = getVedItems(supply);
-            document.querySelectorAll('#testVedItems .test-item-checkbox:checked').forEach(function(cb) {
-                var idx = parseInt(cb.dataset.testItemIdx);
-                var qtyInput = cb.closest('.test-item-card').querySelector('.test-item-qty');
+            document.querySelectorAll('#testVedItems .test-item-card.selected').forEach(function(card) {
+                var idx = parseInt(card.dataset.testItemIdx);
+                var qtyInput = card.querySelector('.test-item-qty');
                 var qty = qtyInput ? parseInt(qtyInput.value) || 1 : 1;
                 var item = (vedItems && vedItems[idx]) || {};
-                selectedItems.push({ index: idx, article: getVedItemArticle(item) || cb.dataset.testItemArticle || '', name: getVedItemName(item) || cb.dataset.testItemName || '', qty: qty });
+                selectedItems.push({ index: idx, article: getVedItemArticle(item) || card.dataset.testItemArticle || '', name: getVedItemName(item) || card.dataset.testItemName || '', qty: qty });
             });
         }
     }
