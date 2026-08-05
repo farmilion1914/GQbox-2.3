@@ -2510,10 +2510,11 @@ function renderTestingTable() {
     filtered.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     if (!filtered.length) { table.innerHTML = '<div class="empty-state">Нет тестов</div>'; return; }
     var resultLabels = { ok: '<span class="priority-badge priority-planned">ОК</span>', defect: '<span class="priority-badge priority-urgent">Брак</span>', pending: '<span class="priority-badge priority-normal">В процессе</span>' };
-    var h = '<table><thead><tr><th>Артикул</th><th>Поставка ВЭД</th><th>Дата</th><th>Результат</th><th>Кто тестировал</th><th>Комментарий</th><th></th></tr></thead><tbody>';
+    var h = '<table><thead><tr><th>Артикул</th><th>Наименование</th><th class="num">Кол-во</th><th>Поставка ВЭД</th><th>Дата</th><th>Результат</th><th>Кто тестировал</th><th>Комментарий</th><th></th></tr></thead><tbody>';
     filtered.forEach(function(t) {
         var vedLabel = t.vedSupplyNumber ? escapeHtml(t.vedSupplyNumber) : '—';
-        h += '<tr><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + vedLabel + '</td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
+        var qty = t.qty || (t.itemCount || 1);
+        h += '<tr><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + escapeHtml(t.name || (t.items && t.items[0] ? t.items[0].name : '') || '—') + '</td><td class="num">' + qty + '</td><td>' + vedLabel + '</td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
     });
     h += '</tbody></table>';
     table.innerHTML = h;
@@ -2709,6 +2710,7 @@ function renderTestVedItemsPicker(supplyId) {
         h += '<div class="test-item-qty-row" style="display:none">';
         h += '<label class="test-item-qty-label">Количество:</label>';
         h += '<input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" title="Количество">';
+        h += '<button type="button" class="test-item-add-btn">+ Добавить</button>';
         h += '</div>';
         h += '</div>';
     });
@@ -2717,8 +2719,8 @@ function renderTestVedItemsPicker(supplyId) {
     // Клик по карточке — выбор/снятие выбора, показ поля количества
     container.querySelectorAll('.test-item-card').forEach(function(card) {
         card.addEventListener('click', function(e) {
-            // Клик по полю количества не должен снимать выбор
-            if (e.target.classList.contains('test-item-qty')) return;
+            // Клик по полю количества или кнопке не должен снимать выбор
+            if (e.target.classList.contains('test-item-qty') || e.target.classList.contains('test-item-add-btn')) return;
             var isSelected = card.classList.toggle('selected');
             var qtyRow = card.querySelector('.test-item-qty-row');
             if (qtyRow) qtyRow.style.display = isSelected ? 'flex' : 'none';
@@ -2729,6 +2731,40 @@ function renderTestVedItemsPicker(supplyId) {
                 if (selected.length === 1) articleEl.value = selected[0].dataset.testItemArticle || '';
                 else articleEl.value = '';
             }
+        });
+    });
+    // Кнопка «Добавить» — создаёт задание на тестировку сразу
+    container.querySelectorAll('.test-item-add-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var card = btn.closest('.test-item-card');
+            if (!card) return;
+            var qtyInput = card.querySelector('.test-item-qty');
+            var qty = parseInt(qtyInput ? qtyInput.value : 1) || 1;
+            var article = card.dataset.testItemArticle || '';
+            var name = card.dataset.testItemName || '';
+            if (!article) { showToast('Не найден артикул'); return; }
+            var testerEl = document.getElementById('testTester');
+            var rec = {
+                id: generateUniqueId(),
+                article: article,
+                name: name,
+                date: getLocalDateString(),
+                result: 'pending',
+                tester: testerEl ? testerEl.value.trim() : '',
+                comment: '',
+                qty: qty,
+                createdAt: new Date().toISOString()
+            };
+            testingRecords.push(rec);
+            saveTestingToLocalStorage();
+            if (isOnline) { try { db.collection('settings').doc('testingRecords').set({ items: testingRecords }, { merge: true }); } catch(e) {} }
+            // Снимаем выбор с карточки
+            card.classList.remove('selected');
+            var qtyRow = card.querySelector('.test-item-qty-row');
+            if (qtyRow) qtyRow.style.display = 'none';
+            renderTesting();
+            showToast('Задание добавлено: ' + article + ' · ' + qty + ' ед.');
         });
     });
 }
