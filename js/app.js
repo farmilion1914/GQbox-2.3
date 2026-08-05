@@ -269,7 +269,8 @@ async function loadFromFirebase() {
             db.collection('settings').doc('ozonStock').get().catch(function() { return { exists: false }; }),
             db.collection('settings').doc('msStock').get().catch(function() { return { exists: false }; }),
             db.collection('settings').doc('warehouseTransfers').get().catch(function() { return { exists: false }; }),
-            db.collection('settings').doc('warehouseExpenses').get().catch(function() { return { exists: false }; })
+            db.collection('settings').doc('warehouseExpenses').get().catch(function() { return { exists: false }; }),
+            db.collection('settings').doc('testingRecords').get().catch(function() { return { exists: false }; })
         ]);
         clearTimeout(efT);
         if (ef) return;
@@ -284,6 +285,7 @@ async function loadFromFirebase() {
         if (r[8].exists) { var msd = r[8].data(); if (msStockSource !== 'excel') { msStockData = msd.items || []; if (msd.updatedAt) msStockLastUpdate = msd.updatedAt.toDate ? msd.updatedAt.toDate().toISOString() : msd.updatedAt; } }
         if (r[9].exists) { var trd = r[9].data(); if (trd && trd.items) { warehouseTransfers = trd.items; } }
         if (r[10].exists) { var exd = r[10].data(); if (exd && exd.items) { warehouseExpenses = exd.items; } }
+        if (r[11].exists) { var tst = r[11].data(); if (tst && tst.items) { testingRecords = tst.items; saveTestingToLocalStorage(); } }
         isOnline = true;
         updateSyncStatus('online');
         saveAllToLocalStorage();
@@ -2464,6 +2466,158 @@ function resetTrFilters() {
     renderTransfers();
 }
 
+// ============ ТЕСТИРОВКА ============
+var testingRecords = []; // { id, article, date, result, tester, comment }
+var materialData = []; // из Google таблицы
+var materialLastUpdate = null;
+var testSearchQuery = '';
+var testResultFilter = 'all';
+var materialSearchQuery = '';
+var currentTestingSubPage = 'tests';
+var GOOGLE_SHEET_ID = '1bp2_jUAKmN4zV0ORyqeu87yj7YCaUzx7DmboY9fdrKk';
+
+function loadTestingFromLocalStorage() {
+    try { testingRecords = JSON.parse(localStorage.getItem('testingRecords') || '[]'); } catch(e) { testingRecords = []; }
+    try { materialData = JSON.parse(localStorage.getItem('materialData') || '[]'); } catch(e) { materialData = []; }
+    materialLastUpdate = localStorage.getItem('materialLastUpdate') || null;
+}
+
+function saveTestingToLocalStorage() {
+    try {
+        localStorage.setItem('testingRecords', JSON.stringify(testingRecords));
+        localStorage.setItem('materialData', JSON.stringify(materialData));
+        localStorage.setItem('materialLastUpdate', materialLastUpdate || '');
+    } catch(e) {}
+}
+
+function renderTestingKpiStrip() {
+    var strip = document.getElementById('testingKpiStrip');
+    if (!strip) return;
+    var total = testingRecords.length;
+    var ok = testingRecords.filter(function(t) { return t.result === 'ok'; }).length;
+    var defect = testingRecords.filter(function(t) { return t.result === 'defect'; }).length;
+    var pending = testingRecords.filter(function(t) { return t.result === 'pending'; }).length;
+    strip.innerHTML = '<div class="kpi-item"><span class="kpi-item-label">Всего тестов:</span><span class="kpi-item-value">' + total + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">✅ ОК:</span><span class="kpi-item-value" style="color:var(--success);">' + ok + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">❌ Брак:</span><span class="kpi-item-value" style="color:var(--danger);">' + defect + '</span></div><div class="kpi-divider"></div><div class="kpi-item"><span class="kpi-item-label">⏳ В процессе:</span><span class="kpi-item-value" style="color:var(--warning);">' + pending + '</span></div>';
+}
+
+function renderTestingTable() {
+    var table = document.getElementById('testingTable');
+    if (!table) return;
+    var filtered = testingRecords.slice();
+    var q = testSearchQuery.trim().toLowerCase();
+    if (q) filtered = filtered.filter(function(t) { return (t.article || '').toLowerCase().includes(q) || (t.tester || '').toLowerCase().includes(q) || (t.comment || '').toLowerCase().includes(q); });
+    if (testResultFilter !== 'all') filtered = filtered.filter(function(t) { return t.result === testResultFilter; });
+    filtered.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    if (!filtered.length) { table.innerHTML = '<div class="empty-state">Нет тестов</div>'; return; }
+    var resultLabels = { ok: '<span class="priority-badge priority-planned">✅ ОК</span>', defect: '<span class="priority-badge priority-urgent">❌ Брак</span>', pending: '<span class="priority-badge priority-normal">⏳ В процессе</span>' };
+    var h = '<table><thead><tr><th>Артикул</th><th>Дата</th><th>Результат</th><th>Кто тестировал</th><th>Комментарий</th><th></th></tr></thead><tbody>';
+    filtered.forEach(function(t) {
+        h += '<tr><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
+    });
+    h += '</tbody></table>';
+    table.innerHTML = h;
+}
+
+function renderTesting() {
+    renderTestingKpiStrip();
+    renderTestingTable();
+}
+
+function addTestRecord() {
+    var ae = document.getElementById('testArticle'), de = document.getElementById('testDate'), re = document.getElementById('testResult'), te = document.getElementById('testTester'), ce = document.getElementById('testComment');
+    if (!ae || !de) return;
+    var article = ae.value.trim(), date = de.value, result = re ? re.value : 'ok', tester = te ? te.value.trim() : '', comment = ce ? ce.value.trim() : '';
+    if (!article || !date) { showToast('Заполните артикул и дату'); return; }
+    var rec = { id: generateUniqueId(), article: article, date: date, result: result, tester: tester, comment: comment, createdAt: new Date().toISOString() };
+    testingRecords.push(rec);
+    saveTestingToLocalStorage();
+    if (isOnline) { try { db.collection('settings').doc('testingRecords').set({ items: testingRecords }, { merge: true }); } catch(e) {} }
+    if (ae) ae.value = '';
+    if (te) te.value = '';
+    if (ce) ce.value = '';
+    renderTesting();
+    showToast('Тест добавлен');
+}
+
+function deleteTestRecord(id) {
+    if (!confirm('Удалить тест?')) return;
+    testingRecords = testingRecords.filter(function(t) { return t.id !== id; });
+    saveTestingToLocalStorage();
+    if (isOnline) { try { db.collection('settings').doc('testingRecords').set({ items: testingRecords }, { merge: true }); } catch(e) {} }
+    renderTesting();
+    showToast('Тест удалён');
+}
+
+function resetTestFilters() {
+    var se = document.getElementById('testSearch'), re = document.getElementById('testResultFilter');
+    if (se) se.value = '';
+    if (re) re.value = 'all';
+    testSearchQuery = '';
+    testResultFilter = 'all';
+    renderTesting();
+}
+
+// ============ ХАРАКТЕРИСТИКИ СЫРЬЯ (Google Sheets) ============
+async function loadMaterialsFromGoogle() {
+    var btn = document.getElementById('btnLoadMaterials');
+    if (btn) btn.disabled = true;
+    try {
+        var url = 'https://docs.google.com/spreadsheets/d/' + GOOGLE_SHEET_ID + '/gviz/tq?tqx=out:json';
+        var response = await fetch(url);
+        if (!response.ok) throw new Error('Ошибка загрузки: ' + response.status);
+        var text = await response.text();
+        var json = JSON.parse(text.replace(/^\/\*O_o\*\/\s*/, '').replace(/google\.visualization\.Query\.setResponse\(/, '').replace(/\);?\s*$/, ''));
+        var cols = json.table.cols;
+        var rows = json.table.rows;
+        var headers = cols.map(function(c) { return c.label || ''; });
+        materialData = rows.map(function(row) {
+            var obj = {};
+            cols.forEach(function(col, i) {
+                var v = row.c && row.c[i] ? row.c[i].v : null;
+                obj[headers[i] || ('col' + i)] = v === null || v === undefined ? '' : String(v);
+            });
+            return obj;
+        });
+        materialLastUpdate = new Date().toISOString();
+        saveTestingToLocalStorage();
+        renderMaterials();
+        showToast('✅ Загружено: ' + materialData.length + ' позиций');
+    } catch (e) {
+        showToast('❌ Ошибка: ' + e.message);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function renderMaterials() {
+    var table = document.getElementById('materialsTable');
+    var lastUpdateEl = document.getElementById('materialsLastUpdate');
+    if (!table) return;
+    if (lastUpdateEl) lastUpdateEl.textContent = materialLastUpdate ? 'Обновлено: ' + new Date(materialLastUpdate).toLocaleTimeString('ru-RU') + ' · ' + materialData.length + ' поз.' : 'Не загружено';
+    if (!materialData.length) { table.innerHTML = '<div class="empty-state">Нажмите «Загрузить из Google таблицы»</div>'; return; }
+    var filtered = materialData.slice();
+    var q = materialSearchQuery.trim().toLowerCase();
+    if (q) filtered = filtered.filter(function(m) {
+        var article = m['Артикул сырья'] || m['Артикул'] || '';
+        var name = m['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'] || m['Наименование'] || '';
+        return article.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+    });
+    if (!filtered.length) { table.innerHTML = '<div class="empty-state">Ничего не найдено</div>'; return; }
+    var h = '<table><thead><tr><th>Артикул</th><th>Наименование</th><th>Категория</th><th>Модель</th><th>Материал корпуса</th><th>Материал провода</th><th>Сила тока, А</th><th>Напряжение, V</th><th>Мощность, W</th><th>Длина, м</th><th>Передача, Мб/с</th><th>Устройств</th><th>Разъем мама</th><th>Разъем папа</th><th>Протокол</th><th>Тип подключения</th><th>Цвет</th><th>Поставщик</th><th>Модель ВЭД</th><th>Характеристики</th></tr></thead><tbody>';
+    filtered.forEach(function(m) {
+        h += '<tr><td><code>' + escapeHtml(m['Артикул сырья'] || m['Артикул'] || '—') + '</code></td><td>' + escapeHtml(m['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'] || m['Наименование'] || '—') + '</td><td>' + escapeHtml(m['Категория'] || '—') + '</td><td>' + escapeHtml(m['Модель'] || '—') + '</td><td>' + escapeHtml(m['Материал корпуса'] || '—') + '</td><td>' + escapeHtml(m['Материал провода'] || '—') + '</td><td class="num">' + escapeHtml(m['Сила тока, А'] || '—') + '</td><td class="num">' + escapeHtml(m['Выходное напряжение, V'] || '—') + '</td><td class="num">' + escapeHtml(m['Мощность, W'] || '—') + '</td><td class="num">' + escapeHtml(m['Длина, м'] || '—') + '</td><td class="num">' + escapeHtml(m['Передача данных, Мб/с'] || '—') + '</td><td class="num">' + escapeHtml(m['Количество подключаемых устройств'] || '—') + '</td><td>' + escapeHtml(m['Разъем мама'] || '—') + '</td><td>' + escapeHtml(m['Разъем папа'] || '—') + '</td><td>' + escapeHtml(m['Протокол зарядки'] || '—') + '</td><td>' + escapeHtml(m['Тип подключения'] || '—') + '</td><td>' + escapeHtml(m['Цвет'] || '—') + '</td><td>' + escapeHtml(m['Поставщик'] || '—') + '</td><td>' + escapeHtml(m['Модель ВЭД'] || '—') + '</td><td>' + escapeHtml(m['Характеристики'] || '—') + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    table.innerHTML = h;
+}
+
+function resetMaterialFilters() {
+    var se = document.getElementById('materialSearch');
+    if (se) se.value = '';
+    materialSearchQuery = '';
+    renderMaterials();
+}
+
 // ============ INIT ============
 function initTheme() { if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-theme'); }
 
@@ -2482,6 +2636,7 @@ function switchPage(page) {
     if (btns[map[page]]) btns[map[page]].classList.add(cls[map[page]] || 'active');
     if (page === 'schedule') { var sp = document.getElementById('sub-page-' + currentSubPage); if (!sp || !sp.classList.contains('active')) { currentSubPage = 'weeks'; } renderKpiStrip(); renderSchedule(); }
     if (page === 'orders') { initOrdersTab(); }
+    if (page === 'testing') { renderTesting(); renderMaterials(); }
     if (page === 'wb') { var wv = document.getElementById('wbWeekView'); if (wv && wbViewMode === 'week') renderWeekView('Wildberries'); }
     if (page === 'ozon') { var ov = document.getElementById('ozonWeekView'); if (ov && ozonViewMode === 'week') renderWeekView('Ozon'); }
     if (page === 'logistics') { renderLog(); renderLogAnalytics(); }
@@ -2505,6 +2660,27 @@ function initApp() {
     currentPage = localStorage.getItem('currentPage') || 'schedule';
     currentSubPage = localStorage.getItem('currentSubPage') || 'weeks';
     loadAllFromLocalStorage();
+    loadTestingFromLocalStorage();
+
+    // Тестировка
+    document.getElementById('btnAddTest').addEventListener('click', addTestRecord);
+    document.getElementById('btnLoadMaterials').addEventListener('click', loadMaterialsFromGoogle);
+    document.getElementById('testSearch').addEventListener('input', function() { testSearchQuery = this.value; renderTesting(); });
+    document.getElementById('testResultFilter').addEventListener('change', function() { testResultFilter = this.value; renderTesting(); });
+    document.getElementById('btnResetTestFilters').addEventListener('click', resetTestFilters);
+    document.getElementById('materialSearch').addEventListener('input', function() { materialSearchQuery = this.value; renderMaterials(); });
+    document.getElementById('btnResetMaterialFilters').addEventListener('click', resetMaterialFilters);
+    document.querySelectorAll('[data-testing-sub]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            currentTestingSubPage = this.dataset.testingSub;
+            document.querySelectorAll('#page-testing .sub-nav-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('#page-testing .sub-page').forEach(function(p) { p.classList.remove('active'); });
+            this.classList.add('active');
+            document.getElementById('testing-sub-' + currentTestingSubPage).classList.add('active');
+            if (currentTestingSubPage === 'tests') renderTesting();
+            else renderMaterials();
+        });
+    });
 
     // Navigation
     document.querySelectorAll('.nav-btn').forEach(function(b) { b.addEventListener('click', function() { switchPage(this.dataset.page); }); });
@@ -2706,6 +2882,7 @@ function initApp() {
         if (t.hasAttribute('data-ved-list-remove')) { e.stopPropagation(); removeVedList(parseInt(t.getAttribute('data-ved-list-remove'))); }
         if (t.hasAttribute('data-log-paid')) { toggleLogPaid(t.getAttribute('data-log-paid')); }
         if (t.hasAttribute('data-log-delete')) { deleteLogEntry(t.getAttribute('data-log-delete')); }
+        if (t.hasAttribute('data-test-delete')) { deleteTestRecord(t.getAttribute('data-test-delete')); }
         var vedBody = t.closest('.ved-card .card-body');
         if (vedBody && vedBody.hasAttribute('data-ved-toggle')) { if (t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.tagName === 'OPTION' || t.closest('select') || t.closest('button')) return; toggleVedDetails(vedBody.getAttribute('data-ved-toggle')); }
     });

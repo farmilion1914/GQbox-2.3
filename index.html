@@ -53,6 +53,7 @@
         <button type="button" class="nav-btn" data-page="logistics">Логистика</button>
         <button type="button" class="nav-btn" data-page="ved">ВЭД</button>
         <button type="button" class="nav-btn" data-page="orders">📦 Заказы</button>
+        <button type="button" class="nav-btn" data-page="testing">🧪 Тестировка</button>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -485,6 +486,53 @@
                     <div class="empty-state">Нажмите «Обновить»</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ============ СТРАНИЦА: Тестировка ============ -->
+    <div class="page" id="page-testing">
+        <h1>Тестировка</h1>
+        <p class="subtitle">Тестирование товара из Китая и характеристики сырья</p>
+        <div class="sub-nav">
+            <button type="button" class="sub-nav-btn active" data-testing-sub="tests">Тестировка</button>
+            <button type="button" class="sub-nav-btn" data-testing-sub="materials">Характеристики сырья</button>
+        </div>
+
+        <!-- ===== Подраздел: Тестировка ===== -->
+        <div class="sub-page active" id="testing-sub-tests">
+            <div class="kpi-strip" id="testingKpiStrip"></div>
+            <div class="form-card">
+                <div class="form-row">
+                    <div class="field"><label>Артикул</label><input type="text" id="testArticle" placeholder="Например: S10002E/01" list="testArticleList"></div>
+                    <datalist id="testArticleList"></datalist>
+                    <div class="field"><label>Дата теста</label><input type="date" id="testDate"></div>
+                    <div class="field"><label>Результат</label><select id="testResult"><option value="ok">✅ ОК</option><option value="defect">❌ Брак</option><option value="pending">⏳ В процессе</option></select></div>
+                    <div class="field"><label>Кто тестировал</label><input type="text" id="testTester" placeholder="Имя"></div>
+                </div>
+                <div class="form-row" style="margin-top:10px">
+                    <div class="field" style="flex:2"><label>Комментарий</label><input type="text" id="testComment" placeholder="Описание результата теста"></div>
+                    <div class="field"><label style="visibility:hidden">.</label><button type="button" class="btn-add-shipment log" id="btnAddTest">+ Добавить тест</button></div>
+                </div>
+            </div>
+            <div class="filters">
+                <input type="text" id="testSearch" placeholder="🔍 Поиск по артикулу...">
+                <select id="testResultFilter"><option value="all">Все результаты</option><option value="ok">✅ ОК</option><option value="defect">❌ Брак</option><option value="pending">⏳ В процессе</option></select>
+                <button type="button" class="chip" id="btnResetTestFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="testingTable"><div class="empty-state">Нет тестов</div></div>
+        </div>
+
+        <!-- ===== Подраздел: Характеристики сырья ===== -->
+        <div class="sub-page" id="testing-sub-materials">
+            <div class="controls" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+                <button type="button" class="btn btn-primary btn-sm" id="btnLoadMaterials">Загрузить из Google таблицы</button>
+                <span style="font-size:12px;color:var(--text-secondary);" id="materialsLastUpdate">Не загружено</span>
+            </div>
+            <div class="filters">
+                <input type="text" id="materialSearch" placeholder="🔍 Поиск по артикулу или названию...">
+                <button type="button" class="chip" id="btnResetMaterialFilters">Сброс</button>
+            </div>
+            <div class="table-wrap" id="materialsTable"><div class="empty-state">Нажмите «Загрузить из Google таблицы»</div></div>
         </div>
     </div>
 
