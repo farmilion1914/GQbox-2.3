@@ -2586,10 +2586,13 @@ function deepFindStrings(obj, maxItems) {
 function isVedJunk(s) {
     s = String(s || '').trim();
     if (!s) return true;
-    if (s === 'N/A' || s === '—' || s === '-' || s === '无' || s === 'None' || s === 'null') return true;
+    var lower = s.toLowerCase();
+    if (lower === 'n/a' || lower === 'na' || lower === 'none' || lower === 'null' || lower === 'undefined' || lower === '无' || lower === 'nan' || s === '—' || s === '-') return true;
     // Иероглифы (китайские служебные слова типа "型号" / "数量" — это заголовки, не данные)
     var chineseCount = (s.match(/[\u4e00-\u9fff]/g) || []).length;
     if (chineseCount > 0) return true;
+    // Короткие числа (1, 12) — это индексы/мусор, не артикулы
+    if (/^\d{1,3}$/.test(s)) return true;
     return false;
 }
 
@@ -2690,13 +2693,20 @@ function renderTestVedItemsPicker(supplyId) {
     if (!supply) { container.innerHTML = '<div class="test-items-empty">Поставка не найдена</div>'; return; }
     var items = getVedItems(supply);
     if (!items.length) { container.innerHTML = '<div class="test-items-empty">В поставке нет товаров</div>'; return; }
-    var h = '<div class="test-items-grid">';
+    // Фильтруем мусорные позиции (none, 1, N/A, иероглифы) — показываем только с валидным артикулом
+    var validItems = [];
     items.forEach(function(it, idx) {
         var article = getVedItemArticle(it);
-        var name = getVedItemName(it);
+        if (article) validItems.push({ it: it, idx: idx, article: article });
+    });
+    if (!validItems.length) { container.innerHTML = '<div class="test-items-empty">В поставке нет товаров с артикулами</div>'; return; }
+    var h = '<div class="test-items-grid">';
+    validItems.forEach(function(v) {
+        var article = v.article;
+        var name = getVedItemName(v.it);
         if (!name && article) name = article;
         name = String(name).slice(0, 50);
-        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(article || '—') + '</span><span class="test-item-name">' + escapeHtml(name || '—') + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
+        h += '<label class="test-item-card"><input type="checkbox" class="test-item-checkbox" data-test-item-idx="' + v.idx + '" data-test-item-article="' + escapeHtml(article) + '" data-test-item-name="' + escapeHtml(name) + '"><span class="test-item-info"><span class="test-item-article">' + escapeHtml(article || '—') + '</span><span class="test-item-name">' + escapeHtml(name || '—') + '</span></span><input type="number" class="test-item-qty" min="1" value="1" placeholder="Кол-во" disabled></label>';
     });
     h += '</div>';
     container.innerHTML = h;
