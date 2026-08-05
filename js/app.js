@@ -2585,34 +2585,46 @@ function deepFindStrings(obj, maxItems) {
 // Нормализация полей товара ВЭД (поддержка объектов, массивов и разных языков)
 function getVedItemArticle(it) {
     if (it == null) return '';
-    if (typeof it === 'string' || typeof it === 'number') { var s = String(it); if (/^\d{1,2}$/.test(s)) return ''; return s; }
+    if (typeof it === 'string' || typeof it === 'number') { var s0 = String(it); if (s0 && s0 !== 'N/A' && s0 !== '—') return s0; return ''; }
     if (Array.isArray(it)) {
-        // Массив вида [артикул, название, ...]
-        for (var i = 0; i < Math.min(it.length, 4); i++) {
-            if (it[i] == null) continue;
-            var s = String(it[i]).trim();
-            if (s && !/^\d{1,2}$/.test(s) && s.includes('-') && s.length <= 30) return s;
-        }
-        // Ищем любой нечисловой текст (может быть артикулом)
+        // Массив вида [артикул, название, ...] — берём первый непустой элемент
         for (var i = 0; i < Math.min(it.length, 6); i++) {
             if (it[i] == null) continue;
             var s = String(it[i]).trim();
-            if (s && !/^\d+$/.test(s) && s.length >= 3 && s.length <= 30 && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
+            if (s && s !== 'N/A' && s !== '—' && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
         }
         return '';
     }
-    var candidates = [it.article, it.art, it.sku, it.code, it['Артикул'], it['Артикул сырья'], it['Модель'], it.model];
-    for (var i = 0; i < candidates.length; i++) {
-        if (candidates[i] == null) continue;
-        var s = String(candidates[i]).trim();
-        if (s && !/^\d{1,2}$/.test(s) && s !== 'N/A' && s !== '—') return s;
+    // Объект: сначала ищем любые текстовые/числовые значения по известным ключам
+    var keyCandidates = [
+        ['article', 'Артикул', 'Артикул сырья', 'art', 'sku', 'code', 'Модель', 'model', 'Код товара', 'Артикул товара'],
+        ['name', 'Наименование', 'НОВОЕ ТОВАРНОЕ НАЗВАНИЕ', 'title', 'Название', 'description', 'desc', 'Описание', 'Товар']
+    ];
+    for (var ki = 0; ki < keyCandidates.length; ki++) {
+        for (var j = 0; j < keyCandidates[ki].length; j++) {
+            var v = it[keyCandidates[ki][j]];
+            if (v == null) continue;
+            var s = String(v).trim();
+            if (s && s !== 'N/A' && s !== '—' && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
+        }
     }
-    // Fallback: глубокий поиск строк в объекте
-    var found = deepFindStrings(it, 6);
-    for (var i = 0; i < found.length; i++) {
-        var s = found[i];
-        if (s && !/^\d{1,2}$/.test(s) && s.length >= 3 && s.length <= 30 && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
+    // Fallback: глубокий поиск строк в объекте (включая числа)
+    var found = [];
+    function walk(o, depth) {
+        if (found.length >= 6 || o == null || typeof o !== 'object' || depth > 4) return;
+        if (Array.isArray(o)) { for (var i = 0; i < o.length && found.length < 6; i++) walk(o[i], depth + 1); return; }
+        for (var k in o) {
+            if (found.length >= 6) return;
+            var v = o[k];
+            if (v == null) continue;
+            if (typeof v === 'string' || typeof v === 'number') {
+                var s = String(v).trim();
+                if (s && s !== 'N/A' && s !== '—' && !/^[\u4e00-\u9fff]+$/.test(s)) found.push(s);
+            } else if (typeof v === 'object') walk(v, depth + 1);
+        }
     }
+    walk(it, 0);
+    if (found.length) return found[0];
     return '';
 }
 function getVedItemName(it) {
