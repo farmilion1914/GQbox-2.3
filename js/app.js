@@ -2545,11 +2545,41 @@ function populateTestVedSupplies() {
 // Получение массива товаров поставки (поддержка разных структур данных)
 function getVedItems(supply) {
     if (!supply) return [];
+    // Если items — объект с числовыми ключами (типа JSON-массива), конвертируем в массив
+    if (supply.items && typeof supply.items === 'object' && !Array.isArray(supply.items)) {
+        var vals = Object.keys(supply.items).sort(function(a, b) { return parseInt(a) - parseInt(b); });
+        if (vals.length && !isNaN(parseInt(vals[0]))) {
+            return vals.map(function(k) { return supply.items[k]; });
+        }
+    }
     var candidates = [supply.items, supply.products, supply.goods, supply.positions];
     for (var i = 0; i < candidates.length; i++) {
         if (Array.isArray(candidates[i]) && candidates[i].length > 0) return candidates[i];
     }
     return [];
+}
+
+// Глубокий поиск строк в объекте (рекурсивно по всем вложенным полям)
+function deepFindStrings(obj, maxItems) {
+    var out = [];
+    function walk(o, depth) {
+        if (out.length >= maxItems) return;
+        if (o == null || typeof o !== 'object' || depth > 4) return;
+        if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) walk(o[i], depth + 1); return; }
+        for (var k in o) {
+            if (out.length >= maxItems) return;
+            var v = o[k];
+            if (v == null) continue;
+            if (typeof v === 'string' || typeof v === 'number') {
+                var s = String(v).trim();
+                if (s && !/^\d{1,3}$/.test(s)) out.push(s);
+            } else if (typeof v === 'object') {
+                walk(v, depth + 1);
+            }
+        }
+    }
+    walk(obj, 0);
+    return out;
 }
 
 // Нормализация полей товара ВЭД (поддержка объектов, массивов и разных языков)
@@ -2577,6 +2607,12 @@ function getVedItemArticle(it) {
         var s = String(candidates[i]).trim();
         if (s && !/^\d{1,2}$/.test(s) && s !== 'N/A' && s !== '—') return s;
     }
+    // Fallback: глубокий поиск строк в объекте
+    var found = deepFindStrings(it, 6);
+    for (var i = 0; i < found.length; i++) {
+        var s = found[i];
+        if (s && !/^\d{1,2}$/.test(s) && s.length >= 3 && s.length <= 30 && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
+    }
     return '';
 }
 function getVedItemName(it) {
@@ -2596,6 +2632,12 @@ function getVedItemName(it) {
         if (candidates[i] == null) continue;
         var s = String(candidates[i]).trim();
         if (s && s !== 'N/A' && s !== '—') return s;
+    }
+    // Fallback: глубокий поиск строк в объекте
+    var found = deepFindStrings(it, 8);
+    for (var i = 0; i < found.length; i++) {
+        var s = found[i];
+        if (s && s.length > 3 && !/^[\u4e00-\u9fff]+$/.test(s)) return s;
     }
     // Если имя не найдено — используем артикул как имя
     var article = getVedItemArticle(it);
