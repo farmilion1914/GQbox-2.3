@@ -327,6 +327,25 @@ h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; color: var(--text-pr
 .dark-theme .test-item-card.selected { background: #1e2e3d; }
 .dark-theme .test-item-card.selected .test-item-qty { background: var(--surface); color: var(--accent); }
 
+/* Раскрывающееся задание на тестировку */
+.test-row { cursor: pointer; }
+.test-row.expanded { background: var(--surface-hover); }
+.test-detail-row td { background: var(--surface); }
+.test-detail { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+.test-detail-section { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--input-bg); }
+.test-detail-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-tertiary); margin-bottom: 10px; }
+.test-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; }
+.test-detail-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.test-detail-label { font-size: 10px; color: var(--text-tertiary); }
+.test-detail-value { font-size: 13px; font-weight: 600; color: var(--text-primary); word-break: break-word; }
+.test-detail-empty { font-size: 12px; color: var(--text-tertiary); padding: 8px 0; }
+.test-detail-result-row { display: flex; align-items: center; gap: 10px; }
+.test-detail-result-label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.test-detail-result { padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; font-family: inherit; background: var(--surface); color: var(--text-primary); cursor: pointer; }
+.test-detail-result:focus { outline: none; border-color: var(--accent); }
+.dark-theme .test-detail-section { background: #343638; }
+.dark-theme .test-detail-row td { background: #2d2f31; }
+
 /* Materials cards */
 .materials-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .material-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; box-shadow: var(--shadow-sm); transition: box-shadow .2s; }

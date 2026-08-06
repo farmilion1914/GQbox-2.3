@@ -2474,6 +2474,7 @@ var testSearchQuery = '';
 var testResultFilter = 'all';
 var materialSearchQuery = '';
 var currentTestingSubPage = 'tests';
+var expandedTestId = null;
 var GOOGLE_SHEET_ID = '1bp2_jUAKmN4zV0ORyqeu87yj7YCaUzx7DmboY9fdrKk';
 
 function loadTestingFromLocalStorage() {
@@ -2514,7 +2515,50 @@ function renderTestingTable() {
     filtered.forEach(function(t) {
         var vedLabel = t.vedSupplyNumber ? escapeHtml(t.vedSupplyNumber) : '—';
         var qty = t.qty || (t.itemCount || 1);
-        h += '<tr><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + escapeHtml(t.name || (t.items && t.items[0] ? t.items[0].name : '') || '—') + '</td><td class="num">' + qty + '</td><td>' + vedLabel + '</td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
+        var isExpanded = expandedTestId === t.id;
+        h += '<tr class="test-row' + (isExpanded ? ' expanded' : '') + '" data-test-expand="' + t.id + '"><td><code>' + escapeHtml(t.article || '—') + '</code></td><td>' + escapeHtml(t.name || (t.items && t.items[0] ? t.items[0].name : '') || '—') + '</td><td class="num">' + qty + '</td><td>' + vedLabel + '</td><td>' + escapeHtml(t.date || '—') + '</td><td>' + (resultLabels[t.result] || '—') + '</td><td>' + escapeHtml(t.tester || '—') + '</td><td>' + escapeHtml(t.comment || '—') + '</td><td><button type="button" class="btn btn-danger-sm" data-test-delete="' + t.id + '">x</button></td></tr>';
+        if (isExpanded) {
+            h += '<tr class="test-detail-row"><td colspan="9"><div class="test-detail">';
+            // Характеристики сырья по артикулу
+            var mat = materialData.find(function(m) { return (m['Артикул сырья'] || m['Артикул'] || '') === t.article; });
+            h += '<div class="test-detail-section"><div class="test-detail-title">Характеристики сырья</div>';
+            if (mat) {
+                var matFields = [
+                    { label: 'Материал корпуса', value: mat['Материал корпуса'] },
+                    { label: 'Материал провода', value: mat['Материал провода'] },
+                    { label: 'Сила тока, А', value: mat['Сила тока, А'] },
+                    { label: 'Напряжение, V', value: mat['Выходное напряжение, V'] },
+                    { label: 'Мощность, W', value: mat['Мощность, W'] },
+                    { label: 'Длина, м', value: mat['Длина, м'] },
+                    { label: 'Передача, Мб/с', value: mat['Передача данных, Мб/с'] },
+                    { label: 'Устройств', value: mat['Количество подключаемых устройств'] },
+                    { label: 'Разъем мама', value: mat['Разъем мама'] },
+                    { label: 'Разъем папа', value: mat['Разъем папа'] },
+                    { label: 'Протокол', value: mat['Протокол зарядки'] },
+                    { label: 'Тип подключения', value: mat['Тип подключения'] },
+                    { label: 'Цвет', value: mat['Цвет'] }
+                ];
+                var shown = matFields.filter(function(f) { return f.value; });
+                if (shown.length) {
+                    h += '<div class="test-detail-grid">';
+                    shown.forEach(function(f) { h += '<div class="test-detail-item"><span class="test-detail-label">' + escapeHtml(f.label) + '</span><span class="test-detail-value">' + escapeHtml(f.value) + '</span></div>'; });
+                    h += '</div>';
+                } else {
+                    h += '<div class="test-detail-empty">Характеристики не заполнены</div>';
+                }
+            } else {
+                h += '<div class="test-detail-empty">Характеристики сырья не найдены по артикулу</div>';
+            }
+            h += '</div>';
+            // Проверка работоспособности
+            h += '<div class="test-detail-section"><div class="test-detail-title">Проверка работоспособности</div>';
+            h += '<div class="test-detail-result-row">';
+            h += '<label class="test-detail-result-label">Результат:</label>';
+            h += '<select class="test-detail-result" data-test-result="' + t.id + '"><option value="ok"' + (t.result === 'ok' ? ' selected' : '') + '>Работает</option><option value="defect"' + (t.result === 'defect' ? ' selected' : '') + '>Брак (не работает)</option><option value="pending"' + (t.result === 'pending' ? ' selected' : '') + '>В процессе</option></select>';
+            h += '</div>';
+            h += '</div>';
+            h += '</div></td></tr>';
+        }
     });
     h += '</tbody></table>';
     table.innerHTML = h;
@@ -3195,6 +3239,7 @@ function initApp() {
         if (t.hasAttribute('data-log-paid')) { toggleLogPaid(t.getAttribute('data-log-paid')); }
         if (t.hasAttribute('data-log-delete')) { deleteLogEntry(t.getAttribute('data-log-delete')); }
         if (t.hasAttribute('data-test-delete')) { deleteTestRecord(t.getAttribute('data-test-delete')); }
+        if (t.hasAttribute('data-test-expand')) { expandedTestId = expandedTestId === t.getAttribute('data-test-expand') ? null : t.getAttribute('data-test-expand'); renderTestingTable(); }
         var vedBody = t.closest('.ved-card .card-body');
         if (vedBody && vedBody.hasAttribute('data-ved-toggle')) { if (t.tagName === 'SELECT' || t.tagName === 'BUTTON' || t.tagName === 'OPTION' || t.closest('select') || t.closest('button')) return; toggleVedDetails(vedBody.getAttribute('data-ved-toggle')); }
     });
@@ -3215,6 +3260,18 @@ function initApp() {
         if (t.hasAttribute('data-log-pallets')) { updateLogPallets(t.getAttribute('data-log-pallets'), t.value); }
         if (t.hasAttribute('data-log-amount')) { updateLogAmount(t.getAttribute('data-log-amount'), t.value); }
         if (t.hasAttribute('data-week-cap')) { updateWeekCapacity(t.getAttribute('data-week-cap'), t.value); }
+        if (t.hasAttribute('data-test-result')) {
+            var id = t.getAttribute('data-test-result');
+            var rec = testingRecords.find(function(r) { return r.id === id; });
+            if (rec) {
+                rec.result = t.value;
+                saveTestingToLocalStorage();
+                if (isOnline) { try { db.collection('settings').doc('testingRecords').set({ items: testingRecords }, { merge: true }); } catch(e) {} }
+                renderTestingTable();
+                renderTestingKpiStrip();
+                showToast('Результат обновлён');
+            }
+        }
     });
 
     // Global input handler
