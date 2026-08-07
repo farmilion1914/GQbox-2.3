@@ -2691,24 +2691,50 @@ function getVedItemName(it) {
         for (var i = 1; i < Math.min(it.length, 6); i++) {
             if (it[i] == null) continue;
             var s = String(it[i]).trim();
-            if (!isVedJunk(s) && s.length > 3) return s;
+            if (!/^\d{1,3}$/.test(s) && s.length > 3) return s;
         }
         return '';
     }
-    var candidates = [it.name, it.title, it['Наименование'], it['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'], it['Название'], it.description, it.desc, it['Описание']];
+    var candidates = [it.name, it.title, it['Наименование'], it['НОВОЕ ТОВАРНОЕ НАЗВАНИЕ'], it['Название'], it.description, it.desc, it['Описание'], it.item, it.product, it.goods, it['Товар'], it['Товары'], it['Наименование товара']];
     for (var i = 0; i < candidates.length; i++) {
         if (candidates[i] == null) continue;
         var s = String(candidates[i]).trim();
-        if (!isVedJunk(s) && s.length > 3) return s;
+        if (!/^\d{1,3}$/.test(s) && s.length > 3) return s;
     }
-    // Fallback: глубокий поиск строк (только не-артикульные, читаемые названия)
-    var found = deepFindStrings(it, 8);
+    // Fallback: глубокий поиск строк — берём самую длинную читаемую строку, отличную от артикула
+    var found = deepFindStringsRaw(it, 12);
+    var article = getVedItemArticle(it);
     for (var i = 0; i < found.length; i++) {
         var s = found[i];
-        if (isVedJunk(s)) continue;
-        if (s.length > 3 && s !== getVedItemArticle(it)) return s;
+        if (!s || s.length <= 3) continue;
+        if (/^\d{1,3}$/.test(s)) continue;
+        if (s === article) continue;
+        return s;
     }
     return '';
+}
+function deepFindStringsRaw(obj, maxItems) {
+    var out = [];
+    function walk(o, depth) {
+        if (out.length >= maxItems) return;
+        if (o == null || typeof o !== 'object' || depth > 4) return;
+        if (Array.isArray(o)) { for (var i = 0; i < o.length; i++) walk(o[i], depth + 1); return; }
+        for (var k in o) {
+            if (out.length >= maxItems) return;
+            var v = o[k];
+            if (v == null) continue;
+            if (typeof v === 'string' || typeof v === 'number') {
+                var s = String(v).trim();
+                if (s && s.length > 3) out.push(s);
+            } else if (typeof v === 'object') {
+                walk(v, depth + 1);
+            }
+        }
+    }
+    walk(obj, 0);
+    // Сортируем: самые длинные строки первыми — названия длиннее артикулов
+    out.sort(function(a, b) { return b.length - a.length; });
+    return out;
 }
 function getVedItemQty(it) {
     if (it == null) return 1;
